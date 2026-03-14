@@ -1,0 +1,17 @@
+[package]
+name = "pydead-bib"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+nom = "7.1"
+
+[lib]
+name = "pydead_bib"
+path = "src/rust/lib.rs"
+
+[[bin]]
+name = "pyb"
+path = "src/rust/main.rs"
+
+# PyDead-BIB — Python → x86-64 nativo — Sin CPython — Sin GIL — Sin runtime

@@ -1,0 +1,48 @@
+# ============================================================
+# PyDead-BIB .gitignore
+# ============================================================
+
+# Rust build artifacts
+/target/
+**/*.rs.bk
+
+# Cargo lock — include for binary crate
+# Cargo.lock  # keep this tracked
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+.DS_Store?
+._*
+
+# Python bytecode (ironic — we eliminate these forever 💀)
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyc
+.Python
+
+# Python virtual envs (we don't need them — NUNCA)
+venv/
+.venv/
+env/
+.env/
+
+# Test outputs
+*.exe
+*.elf
+*.po
+*.o
+*.obj
+
+# Debug
+*.pdb
+*.dSYM/
