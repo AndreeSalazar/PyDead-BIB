@@ -21,12 +21,12 @@
 // Targets: windows | linux | fastos64 | fastos128 | fastos256 | all
 //
 // Hereda ADead-BIB v8.0:
-//   IR ADeadOp        → reutilizado 100%
-//   ISA Compiler      → reutilizado 100%
-//   UB Detector       → extendido Python
-//   BG Binary Guardian→ reutilizado 100%
-//   PE/ELF/Po output  → reutilizado 100%
-//   Register Allocator→ reutilizado 100%
+//   IR ADeadOp         → reutilizado 100%
+//   ISA Compiler       → reutilizado 100%
+//   UB Detector        → extendido Python
+//   BG Binary Guardian → reutilizado 100%
+//   PE/ELF/Po output   → reutilizado 100%
+//   Register Allocator → reutilizado 100%
 // ============================================================
 
 // ── Python Frontend (★ NUEVO — 15% del código) ──────────────
@@ -34,3 +34,6 @@ pub mod frontend;
 
 // ── Middle-end: IR + UB (heredado + extendido) ──────────────
 pub mod middle;
+
+// ── Backend: Optimizer → RegAlloc → ISA → BG → Output ───────
+pub mod backend;

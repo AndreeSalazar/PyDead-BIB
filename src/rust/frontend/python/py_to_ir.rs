@@ -32,7 +32,7 @@ pub struct IRProgram {
 }
 
 /// Global variable in IR
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IRGlobal {
     pub name: String,
     pub ir_type: IRType,
@@ -40,7 +40,7 @@ pub struct IRGlobal {
 }
 
 /// IR constant value
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum IRConstant {
     Int(i64),
     Float(f64),
