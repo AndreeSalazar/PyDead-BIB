@@ -1,0 +1,5 @@
+print("int:", 42)
+print("negative:", -7)
+print("zero:", 0)
+print("str:", "mundo")
+print("bool:", True)

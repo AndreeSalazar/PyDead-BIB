@@ -11,7 +11,7 @@ use crate::backend::isa::{CompiledProgram, Target};
 // ── BG Stamp ──────────────────────────────────────────────────
 pub const BG_MAGIC: u32 = 0x42494221;     // "BIB!"
 pub const PO_MAGIC: u32 = 0x506F4F53;     // "PoOS"
-pub const PYDEAD_VERSION: u16 = 0x0101;   // v1.1
+pub const PYDEAD_VERSION: u16 = 0x0102;   // v1.2
 
 #[repr(C)]
 pub struct BGStamp {
@@ -72,6 +72,8 @@ pub fn stamp(program: &CompiledProgram) -> StampedProgram {
         functions: program.functions.iter().map(|f| (f.name.clone(), f.offset, f.size)).collect(),
         entry_point: program.entry_point,
         target: program.target,
+        iat_fixups: program.iat_fixups.clone(),
+        data_fixups: program.data_fixups.clone(),
     }
 }
 
@@ -83,6 +85,8 @@ pub struct StampedProgram {
     pub functions: Vec<(String, u32, u32)>,
     pub entry_point: u32,
     pub target: Target,
+    pub iat_fixups: Vec<(u32, usize)>,
+    pub data_fixups: Vec<(u32, String)>,
 }
 
 fn compute_checksum(text: &[u8], data: &[u8]) -> u32 {

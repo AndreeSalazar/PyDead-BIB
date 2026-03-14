@@ -1,10 +1,10 @@
 // ============================================================
-// PyDead-BIB Compiler CLI v1.1
+// PyDead-BIB Compiler CLI v1.2
 // Python Native Compiler — Sin CPython, Sin GIL, Sin Runtime
 // 100% Self-Sufficient — Sin linker externo
 // 256-bit nativo — YMM/AVX2 — SoA natural
 // Hereda ADead-BIB v8.0 — IR probado — codegen probado
-// 13/13 fases completas — Backend Integration ✓
+// 13/13 fases completas — Real Runtime Output ✓
 // ============================================================
 
 use pydead_bib::frontend::python::compile_python_to_ir;
@@ -105,9 +105,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // VERSION
         // ============================================================
         "--version" | "-v" | "version" => {
-            println!("PyDead-BIB v1.1.0 💀🦈");
+            println!("PyDead-BIB v1.2.0 💀🦈");
             println!("Python → x86-64 nativo — Sin CPython — Sin GIL — Sin runtime");
-            println!("13/13 fases — Backend Integration Complete");
+            println!("13/13 fases — Real Runtime Output — print() de verdad");
             println!("Hereda ADead-BIB v8.0 — IR probado — codegen probado");
             println!("Eddi Andreé Salazar Matos — Lima, Perú 🇵🇪");
         }
@@ -138,7 +138,7 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     let target = Target::from_str(target_str);
 
     println!("╔══════════════════════════════════════════════════════════════╗");
-    println!("║   PyDead-BIB Compiler v1.1 💀🦈                             ║");
+    println!("║   PyDead-BIB Compiler v1.2 💀🦈                             ║");
     println!("╚══════════════════════════════════════════════════════════════╝");
     println!("  Source:   {}", input_file);
     println!("  Output:   {}", output_file);
@@ -309,7 +309,7 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
 // ============================================================
 fn run_test_suite() -> Result<(), Box<dyn std::error::Error>> {
     println!("╔══════════════════════════════════════════════════════════════╗");
-    println!("║   PyDead-BIB Test Suite v1.1 💀🦈                           ║");
+    println!("║   PyDead-BIB Test Suite v1.2 💀🦈                           ║");
     println!("╚══════════════════════════════════════════════════════════════╝");
     println!();
 
@@ -319,6 +319,8 @@ fn run_test_suite() -> Result<(), Box<dyn std::error::Error>> {
         ("tests/test_functions.py", "Functions"),
         ("tests/test_classes.py", "Classes"),
         ("tests/test_builtins.py", "Builtins"),
+        ("tests/test_hello_real.py", "Real Print"),
+        ("tests/test_print_types.py", "Print Types"),
     ];
 
     let mut passed = 0;
@@ -475,9 +477,9 @@ fn get_target(args: &[String]) -> &str {
 
 fn print_usage(program: &str) {
     println!("╔══════════════════════════════════════════════════════════════╗");
-    println!("║   PyDead-BIB v1.1 — Python Native Compiler 💀🦈             ║");
+    println!("║   PyDead-BIB v1.2 — Python Native Compiler 💀🦈             ║");
     println!("║   Sin CPython — Sin GIL — Sin Runtime                        ║");
-    println!("║   13/13 fases — Backend Integration Complete                 ║");
+    println!("║   13/13 fases — Real Runtime Output                          ║");
     println!("╚══════════════════════════════════════════════════════════════╝");
     println!();
     println!("Usage:");

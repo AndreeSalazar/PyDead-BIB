@@ -105,6 +105,13 @@ pub enum IRInstruction {
     // Iterator
     IterNext { target: String, end_label: String },
 
+    // Builtins — direct runtime calls
+    PrintStr(String),       // print string literal (label in .data)
+    PrintInt,               // print RAX as decimal integer
+    PrintFloat,             // print XMM0 as float
+    PrintNewline,           // print "\n"
+    ExitProcess,            // exit with RAX as exit code
+
     // No-op
     Nop,
 }

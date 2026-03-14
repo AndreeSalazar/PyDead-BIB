@@ -79,9 +79,43 @@ impl PyToIR {
     /// Main entry: Convert Python module → IR program
     pub fn convert(&mut self, module: &PyModule) -> Result<IRProgram, String> {
         let mut program = IRProgram::new();
+        let mut toplevel_stmts: Vec<&PyStmt> = Vec::new();
 
+        // First pass: collect functions/classes, note top-level stmts
         for stmt in &module.body {
-            self.convert_stmt(stmt, &mut program)?;
+            match stmt {
+                PyStmt::FunctionDef { .. } | PyStmt::ClassDef { .. } => {
+                    self.convert_stmt(stmt, &mut program)?;
+                }
+                PyStmt::Import { .. } | PyStmt::ImportFrom { .. } => {}
+                PyStmt::Assign { targets, value } => {
+                    // Global assignments
+                    for target in targets {
+                        if let PyExpr::Name(name) = target {
+                            let ir_type = self.infer_expr_type(value);
+                            let init = self.expr_to_constant(value);
+                            program.globals.push(IRGlobal {
+                                name: name.clone(),
+                                ir_type,
+                                init_value: init,
+                            });
+                        }
+                    }
+                }
+                _ => {
+                    toplevel_stmts.push(stmt);
+                }
+            }
+        }
+
+        // Second pass: generate __main__ for top-level expressions
+        if !toplevel_stmts.is_empty() {
+            let mut main_func = IRFunction::new("__main__".to_string(), vec![], IRType::Void);
+            for stmt in &toplevel_stmts {
+                self.convert_body_stmt(stmt, &mut main_func, &mut program)?;
+            }
+            main_func.body.push(IRInstruction::ReturnVoid);
+            program.functions.push(main_func);
         }
 
         Ok(program)
@@ -109,19 +143,6 @@ impl PyToIR {
 
                 program.functions.push(func);
             }
-            PyStmt::Assign { targets, value } => {
-                for target in targets {
-                    if let PyExpr::Name(name) = target {
-                        let ir_type = self.infer_expr_type(value);
-                        let init = self.expr_to_constant(value);
-                        program.globals.push(IRGlobal {
-                            name: name.clone(),
-                            ir_type,
-                            init_value: init,
-                        });
-                    }
-                }
-            }
             PyStmt::ClassDef { name, body, .. } => {
                 // Convert methods to functions with class prefix
                 for s in body {
@@ -143,26 +164,6 @@ impl PyToIR {
                             self.convert_body_stmt(ms, &mut func, program)?;
                         }
                         program.functions.push(func);
-                    }
-                }
-            }
-            PyStmt::Import { .. } | PyStmt::ImportFrom { .. } => {
-                // Imports resolved at compile time — no IR needed
-            }
-            PyStmt::Expr(expr) => {
-                // Top-level expression (e.g., function call)
-                if let PyExpr::Call { func, args, .. } = expr {
-                    if let PyExpr::Name(name) = func.as_ref() {
-                        if name == "print" {
-                            // print() at module level → emit in __main__
-                            for arg in args {
-                                if let PyExpr::StringLiteral(s) = arg {
-                                    let label = self.add_string(s, program);
-                                    // Will be handled by __main__ generation
-                                    let _ = label;
-                                }
-                            }
-                        }
                     }
                 }
             }
@@ -242,6 +243,49 @@ impl PyToIR {
                 func.body.push(IRInstruction::Label(end_label));
             }
             PyStmt::Expr(expr) => {
+                // Intercept print() calls → emit PrintStr/PrintInt/PrintNewline
+                if let PyExpr::Call { func: call_func, args, .. } = expr {
+                    if let PyExpr::Name(name) = call_func.as_ref() {
+                        if name == "print" {
+                            for (i, arg) in args.iter().enumerate() {
+                                if i > 0 {
+                                    // Space between args
+                                    let sp_label = self.add_string(" ", program);
+                                    func.body.push(IRInstruction::PrintStr(sp_label));
+                                }
+                                match arg {
+                                    PyExpr::StringLiteral(s) => {
+                                        let label = self.add_string(s, program);
+                                        func.body.push(IRInstruction::PrintStr(label));
+                                    }
+                                    PyExpr::IntLiteral(n) => {
+                                        func.body.push(IRInstruction::LoadConst(IRConstValue::Int(*n)));
+                                        func.body.push(IRInstruction::PrintInt);
+                                    }
+                                    PyExpr::FloatLiteral(f) => {
+                                        func.body.push(IRInstruction::LoadConst(IRConstValue::Float(*f)));
+                                        func.body.push(IRInstruction::PrintInt); // simplified
+                                    }
+                                    PyExpr::BoolLiteral(b) => {
+                                        let label = self.add_string(if *b { "True" } else { "False" }, program);
+                                        func.body.push(IRInstruction::PrintStr(label));
+                                    }
+                                    _ => {
+                                        // Variable or expression → evaluate → print as int
+                                        let instr = self.convert_expr_to_instr(arg, program);
+                                        func.body.push(instr);
+                                        func.body.push(IRInstruction::PrintInt);
+                                    }
+                                }
+                            }
+                            if args.is_empty() {
+                                // print() with no args → just newline
+                            }
+                            func.body.push(IRInstruction::PrintNewline);
+                            return Ok(());
+                        }
+                    }
+                }
                 let instr = self.convert_expr_to_instr(expr, program);
                 func.body.push(instr);
             }
@@ -289,6 +333,16 @@ impl PyToIR {
                     }
                     _ => "unknown".to_string(),
                 };
+                // Builtins handled specially — not a generic Call
+                if func_name == "print" || func_name == "abs" || func_name == "min" || func_name == "max" {
+                    let ir_args: Vec<IRInstruction> = args.iter()
+                        .map(|a| self.convert_expr_to_instr(a, program))
+                        .collect();
+                    return IRInstruction::Call {
+                        func: func_name,
+                        args: ir_args,
+                    };
+                }
                 let ir_args: Vec<IRInstruction> = args.iter()
                     .map(|a| self.convert_expr_to_instr(a, program))
                     .collect();
@@ -308,6 +362,35 @@ impl PyToIR {
                     }
                 } else {
                     l
+                }
+            }
+            PyExpr::UnaryOp { op, operand } => {
+                match op {
+                    PyUnaryOp::Neg => {
+                        // -x → 0 - x
+                        if let PyExpr::IntLiteral(n) = operand.as_ref() {
+                            return IRInstruction::LoadConst(IRConstValue::Int(-n));
+                        }
+                        if let PyExpr::FloatLiteral(f) = operand.as_ref() {
+                            return IRInstruction::LoadConst(IRConstValue::Float(-f));
+                        }
+                        let inner = self.convert_expr_to_instr(operand, program);
+                        IRInstruction::BinOp {
+                            op: IROp::Sub,
+                            left: Box::new(IRInstruction::LoadConst(IRConstValue::Int(0))),
+                            right: Box::new(inner),
+                        }
+                    }
+                    PyUnaryOp::Pos => self.convert_expr_to_instr(operand, program),
+                    PyUnaryOp::Invert => {
+                        let inner = self.convert_expr_to_instr(operand, program);
+                        IRInstruction::BinOp {
+                            op: IROp::Xor,
+                            left: Box::new(inner),
+                            right: Box::new(IRInstruction::LoadConst(IRConstValue::Int(-1))),
+                        }
+                    }
+                    _ => self.convert_expr_to_instr(operand, program),
                 }
             }
             _ => IRInstruction::Nop,
