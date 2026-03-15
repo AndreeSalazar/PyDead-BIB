@@ -1,0 +1,301 @@
+╔══════════════════════════════════════════════════════════════════════╗
+║                                                                      ║
+║                       T E C H N E   L I C E N S E                    ║
+║                           Version 1.0, 2026                          ║
+║                                                                      ║
+║              τέχνη — "el arte de crear con maestria"                 ║
+║                                                                      ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+    Copyright (C) 2026 Eddi Andree Salazar Matos
+    Lima, Republica del Peru
+
+    Software cubierto:  ADead-BIB, PyDead-BIB, FastOS
+    Contacto:           eddi.salazar.dev@gmail.com
+    Repositorio:        github.com/AndreeSalazar
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+                            P R E A M B U L O
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+La palabra griega (Techne) significa el arte, la habilidad y la
+maestria en la creacion de algo. Este software representa la expresion
+de ese arte: compiladores nativos construidos desde cero, sin
+dependencias externas, con filosofia propia, desde Lima, Peru.
+
+Esta licencia reconoce que el conocimiento debe ser libre, pero que
+el uso comercial del arte de otro requiere reconocimiento y
+compensacion justa.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    ARTICULO 1 — DEFINICIONES
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    1.1  "Software" se refiere a ADead-BIB, PyDead-BIB, FastOS,
+         y cualquier obra derivada cubierta por esta licencia.
+
+    1.2  "Autor" se refiere a Eddi Andree Salazar Matos,
+         creador original del Software.
+
+    1.3  "Uso Personal" significa uso por un individuo para
+         propositos no comerciales.
+
+    1.4  "Uso Comercial" significa cualquier uso del Software
+         en un producto, servicio o proceso que genere ingresos
+         directa o indirectamente, incluyendo pero no limitado a:
+
+              a)  Productos de software vendidos o licenciados
+              b)  Servicios en la nube que usen el Software
+              c)  Herramientas de desarrollo vendidas a terceros
+              d)  Infraestructura comercial que dependa del Software
+
+    1.5  "Revenue Atribuible" significa los ingresos generados
+         directamente por funcionalidades que dependan del Software.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    ARTICULO 2 — USOS PERMITIDOS SIN COSTO
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    Los siguientes usos estan permitidos sin costo ni restriccion:
+
+    2.1  USO PERSONAL
+         Cualquier individuo puede usar, modificar y distribuir
+         el Software para propositos personales no comerciales.
+
+    2.2  EDUCACION E INVESTIGACION
+         Universidades, escuelas, institutos de investigacion y
+         estudiantes pueden usar el Software libremente para
+         ensenanza, aprendizaje e investigacion academica.
+
+    2.3  PROYECTOS DE CODIGO ABIERTO
+         Proyectos cuyo codigo fuente completo sea publicamente
+         accesible bajo una licencia aprobada por OSI pueden usar
+         el Software sin costo, siempre que incluyan atribucion.
+
+    2.4  ORGANIZACIONES SIN FINES DE LUCRO
+         Organizaciones registradas sin fines de lucro pueden
+         usar el Software libremente para su mision institucional.
+
+    2.5  STARTUPS EN ETAPA TEMPRANA
+         Empresas con ingresos anuales menores a USD $1,000,000
+         (un millon de dolares) pueden usar el Software sin costo
+         durante su periodo de crecimiento inicial, con la
+         obligacion de notificar al Autor y registrarse en el
+         directorio Techne cuando superen dicho umbral.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    ARTICULO 3 — USO COMERCIAL: ROYALTY TECHNE
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    3.1  OBLIGACION DE ROYALTY
+         Toda entidad que use el Software para Uso Comercial con
+         ingresos anuales superiores a USD $1,000,000 debe pagar
+         al Autor un royalty del 10% (diez por ciento) sobre el
+         Revenue Atribuible generado con el Software.
+
+    3.2  CALCULO DEL REVENUE ATRIBUIBLE
+
+         El Revenue Atribuible se calcula como:
+
+              a)  Productos de software:  10% del precio de venta
+                  de las unidades que incorporen el Software.
+              b)  Servicios en la nube:   10% del ingreso del
+                  servicio que dependa del Software.
+              c)  Herramientas de dev:    10% del revenue total
+                  de la herramienta.
+
+    3.3  PAGO Y REPORTE
+
+              a)  Los pagos se realizan trimestralmente.
+              b)  El licenciatario provee reportes de Revenue
+                  Atribuible cada trimestre.
+              c)  El Autor puede auditar los registros con 30
+                  dias de aviso previo.
+
+    3.4  ACUERDO ALTERNATIVO
+         El Autor puede negociar acuerdos alternativos:
+
+              a)  Pago unico (buyout) por uso perpetuo
+              b)  Acuerdos de partnership y co-desarrollo
+              c)  Licencias enterprise con terminos personalizados
+
+         Para negociar:  eddi.salazar.dev@gmail.com
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    ARTICULO 4 — ATRIBUCION REQUERIDA
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    4.1  Todo uso del Software, comercial o no, requiere la
+         siguiente atribucion visible en documentacion y/o
+         interfaz del producto:
+
+         ┌──────────────────────────────────────────────────┐
+         │  "Powered by PyDead-BIB / ADead-BIB"             │
+         │  "Created by Eddi Andree Salazar Matos"          │
+         │  "Lima, Peru — Licensed under Techne v1.0"       │
+         └──────────────────────────────────────────────────┘
+
+    4.2  No se permite remover, ocultar o alterar los avisos
+         de copyright y atribucion del Software.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    ARTICULO 5 — DISTRIBUCION Y OBRAS DERIVADAS
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    5.1  Se permite distribuir el Software y obras derivadas
+         siempre que:
+
+              a)  Se incluya esta licencia completa.
+              b)  Se mantenga la atribucion del Autor original.
+              c)  Las obras derivadas usen esta misma licencia
+                  (copyleft — no se puede cambiar la licencia).
+
+    5.2  No se permite sublicenciar el Software bajo terminos
+         mas permisivos que esta licencia.
+
+    5.3  Las obras derivadas comerciales estan sujetas al
+         mismo royalty del Articulo 3.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    ARTICULO 6 — PROTECCIONES ESPECIALES
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    6.1  PROHIBICION DE APROPIACION
+         Ninguna entidad puede:
+
+              a)  Patentar el Software o sus algoritmos.
+              b)  Registrar marcas basadas en conceptos del Software.
+              c)  Crear obras derivadas disenadas para eludir
+                  esta licencia.
+              d)  Usar el Software para construir un competidor
+                  directo sin acuerdo explicito del Autor.
+
+    6.2  PROTECCION GEOGRAFICA DE CREDITO
+         El origen peruano del Software es parte de su identidad.
+         No se puede eliminar la mencion "Lima, Peru" de ninguna
+         distribucion oficial.
+
+    6.3  INTEGRIDAD DEL NOMBRE
+         Los nombres "ADead-BIB", "PyDead-BIB", "FastOS" y
+         "Binary Is Binary" son marcas del Autor. Su uso requiere
+         autorizacion explicita para productos comerciales.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    ARTICULO 7 — GARANTIAS Y RESPONSABILIDAD
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    7.1  EL SOFTWARE SE PROVEE "TAL CUAL" (AS IS), SIN GARANTIA
+         DE NINGUN TIPO, EXPRESA O IMPLICITA.
+
+    7.2  EL AUTOR NO ES RESPONSABLE POR DANOS DIRECTOS,
+         INDIRECTOS, INCIDENTALES O CONSECUENTES DERIVADOS
+         DEL USO DEL SOFTWARE.
+
+    7.3  EL USUARIO ASUME TODA RESPONSABILIDAD POR EL USO
+         DEL SOFTWARE EN PRODUCCION.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    ARTICULO 8 — TERMINACION
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    8.1  Esta licencia termina automaticamente si el
+         licenciatario:
+
+              a)  Viola cualquier termino de esta licencia.
+              b)  No paga royalties adeudados por mas de 90 dias.
+              c)  Usa el Software para propositos prohibidos.
+
+    8.2  Terminada la licencia, el licenciatario debe:
+
+              a)  Cesar todo uso del Software.
+              b)  Eliminar todas las copias.
+              c)  Pagar royalties adeudados hasta la fecha.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    ARTICULO 9 — LEY APLICABLE
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    Esta licencia se rige por las leyes de la Republica del Peru.
+    Cualquier disputa se resolvera en los tribunales de Lima, Peru.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+                    RESUMEN PARA HUMANOS
+              (no es parte legal, solo orientacion)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    ┌──────────────────────────────────────────────────────────────┐
+    │                                                              │
+    │   Eres dev individual?         FREE                          │
+    │   Eres estudiante?             FREE                          │
+    │   Proyecto open source?        FREE                          │
+    │   ONG / nonprofit?             FREE                          │
+    │   Startup < $1M/year?          FREE                          │
+    │                                                              │
+    │   Empresa > $1M vendiendo      10% royalty sobre revenue     │
+    │     con este software?         atribuible al Software        │
+    │                                                              │
+    │   Microsoft, Google, etc?      10% o negociamos              │
+    │                                                              │
+    │   Quieres comprar              escribeme:                    │
+    │     los derechos?              eddi.salazar.dev@gmail.com    │
+    │                                                              │
+    └──────────────────────────────────────────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+                        INFORMACION DE CONTACTO
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    Autor:       Eddi Andree Salazar Matos
+    Email:       eddi.salazar.dev@gmail.com
+    GitHub:      github.com/AndreeSalazar
+    Ubicacion:   Lima, Peru
+
+
+╔══════════════════════════════════════════════════════════════════════╗
+║                                                                      ║
+║   "El arte pertenece al artesano.                                    ║
+║    Su uso da frutos que deben compartirse."                          ║
+║                                                                      ║
+║                    Techne License v1.0                               ║
+║              Binary Is Binary  --  BIB                               ║
+║                                                                      ║
+║          Eddi Andree Salazar Matos                                   ║
+║          Lima, Peru  --  2026                                        ║
+║                                                                      ║
+╚══════════════════════════════════════════════════════════════════════╝

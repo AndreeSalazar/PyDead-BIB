@@ -64,6 +64,7 @@ pub struct AllocatedFunction {
     pub return_type: IRType,
     pub body: Vec<crate::middle::ir::IRInstruction>,
     pub reg_map: Vec<(String, X86Reg)>,
+    pub param_moves: Vec<(X86Reg, X86Reg)>, // (abi_reg, callee_saved_reg)
     pub stack_size: usize,
     pub spill_count: usize,
 }
@@ -109,7 +110,9 @@ fn allocate_function(
     let mut next_reg = 0usize;
     let mut spill_count = 0usize;
 
-    // Allocate params to ABI registers (Windows x64)
+    // Allocate params to callee-saved scratch registers so they survive calls
+    // We'll record the ABI→callee-saved mapping for the prologue
+    let mut param_moves: Vec<(X86Reg, X86Reg)> = Vec::new(); // (abi_reg, callee_saved_reg)
     for (i, (name, ir_type)) in func.params.iter().enumerate() {
         if ir_type.is_float() {
             let xmm = match i {
@@ -120,6 +123,11 @@ fn allocate_function(
                 _ => { spill_count += 1; X86Reg::XMM0 }
             };
             reg_map.push((name.clone(), xmm));
+        } else if next_reg < SCRATCH_REGS.len() && i < WIN_INT_ARGS.len() {
+            let dest = SCRATCH_REGS[next_reg];
+            param_moves.push((WIN_INT_ARGS[i], dest));
+            reg_map.push((name.clone(), dest));
+            next_reg += 1;
         } else if i < WIN_INT_ARGS.len() {
             reg_map.push((name.clone(), WIN_INT_ARGS[i]));
         } else {
@@ -171,6 +179,7 @@ fn allocate_function(
         return_type: func.return_type.clone(),
         body: func.body.clone(),
         reg_map,
+        param_moves,
         stack_size,
         spill_count,
     }

@@ -38,6 +38,23 @@ const IMPORT_FUNCS: [&str; IAT_SLOT_COUNT] = [
     "GetStdHandle",
     "WriteFile",
     "ExitProcess",
+    "GetProcessHeap",
+    "HeapAlloc",
+    "GetCurrentDirectoryA",
+    "GetFileAttributesA",
+    "GetCurrentProcessId",
+    "CreateFileA",
+    "ReadFile",
+    "CloseHandle",
+    "CreateDirectoryA",
+    "DeleteFileA",
+    "MoveFileA",
+    "FindFirstFileA",
+    "FindNextFileA",
+    "FindClose",
+    "GetEnvironmentVariableA",
+    "GetCommandLineA",
+    "GetFileSizeEx",
 ];
 const IMPORT_DLL: &str = "KERNEL32.dll";
 

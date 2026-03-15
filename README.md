@@ -3,10 +3,11 @@
 > **Python → x86-64 Nativo — Sin CPython — Sin GIL — Sin Runtime**
 
 [![Rust](https://img.shields.io/badge/Rust-1.75+-orange.svg)](https://www.rust-lang.org/)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-1.0.0-green.svg)]()
+[![License](https://img.shields.io/badge/License-Techne%20v1.0-purple.svg)](TECHNE_LICENSE_v1.0.license)
+[![Version](https://img.shields.io/badge/Version-3.0.0-green.svg)](https://github.com/AndreeSalazar/PyDead-BIB)
+[![Tests](https://img.shields.io/badge/Tests-44%2F44%20PASS-brightgreen.svg)](https://github.com/AndreeSalazar/PyDead-BIB)
 
-```
+```text
 Guido van Rossum: 'readability counts'
 Dennis Ritchie:   'small is beautiful'
 Grace Hopper:     'la máquina sirve al humano'
@@ -19,8 +20,8 @@ PyDead-BIB 2026:  hereda ADead-BIB v8.0 — Python nativo — 16→256 bits
 
 **PyDead-BIB** es el primer compilador que transforma código Python directamente a ejecutables nativos x86-64, sin depender de CPython, PyPy, ni ningún runtime.
 
-| Característica | CPython | PyPy | Nuitka | **PyDead-BIB** |
-|----------------|---------|------|--------|----------------|
+| Caracteristica | CPython | PyPy | Nuitka | PyDead-BIB |
+| --- | --- | --- | --- | --- |
 | Sin runtime | ❌ 30MB | ❌ 200MB | ❌ 8MB | ✅ **0 bytes** |
 | Sin GIL | ❌ | ❌ | ❌ | ✅ |
 | Sin GCC/LLVM | ✅ | ✅ | ❌ | ✅ |
@@ -87,7 +88,7 @@ pyb run archivo.py
 pyb step archivo.py
 ```
 
-```
+```text
 ╔══════════════════════════════════════════════════════════════╗
 ║   PyDead-BIB Step Compiler — Deep Analysis Mode 💀🦈         ║
 ╚══════════════════════════════════════════════════════════════╝
@@ -135,7 +136,7 @@ pyb run src/main.py
 
 Estructura generada:
 
-```
+```text
 mi_app/
 ├── pyb.toml        # Configuración del proyecto
 └── src/
@@ -259,7 +260,7 @@ simd = "auto"             # AVX2 automático
 
 ## Arquitectura
 
-```
+```text
 Python Source (.py)
         │
         ▼
@@ -299,7 +300,7 @@ Python Source (.py)
 
 ## Comparación de Performance
 
-```
+```text
 Hello World:
 
 ┌────────────────┬──────────────┬──────────────┐
@@ -336,7 +337,7 @@ PyDead-BIB:      VMULPS ymm0 directo — 8 floats/ciclo
 
 ### Estructura del Proyecto
 
-```
+```text
 PyDead-BIB/
 ├── Cargo.toml
 ├── src/rust/
@@ -375,41 +376,113 @@ pyb --version
 
 ## Roadmap
 
-### v1.1 — Backend Integration
-- [ ] Integrar optimizer de ADead-BIB v8.0
-- [ ] Integrar ISA compiler
-- [ ] Generar PE/ELF ejecutables reales
-- [ ] Test: Hello World → 2KB .exe
+### v1.2 — Real Runtime Output ✅
 
-### v1.2 — SIMD Automático
-- [ ] Detectar `list[float] × 8` → YMM
-- [ ] VMULPS/VADDPS generación
-- [ ] Benchmark vs numpy
+- [x] 13/13 compilation phases
+- [x] PE/ELF/FastOS output
+- [x] print() real output via Win32 WriteFile
+- [x] Binary Guardian stamp
 
-### v1.3 — Stdlib Nativa
-- [ ] `math` → SIMD inline
-- [ ] `os.path` → syscalls directos
-- [ ] `json` → parser nativo
+### v1.3 — Arithmetic & Control Flow ✅
 
-### v2.0 — Production Ready
-- [ ] Async/await → state machine
-- [ ] C extension compatibility
-- [ ] PyPI distribution
+- [x] float print, arithmetic (+,-,*,//,%,**)
+- [x] if/elif/else, for range(), while loops
+- [x] f-strings, AugAssign, SSE2 instructions
+
+### v1.4 — Data Structures ✅
+
+- [x] import math (sqrt, floor, ceil, sin, cos, log, pi, e)
+- [x] Lists (HeapAlloc, append, len, indexing)
+- [x] Dicts (HeapAlloc, open addressing)
+- [x] Classes (init, self.x, field access)
+- [x] Builtins: abs, min, max, chr, ord, tuple unpack
+
+### v1.5 — Standard Library & Package Manager ✅
+
+- [x] `pyb install` / `pyb list` — native package manager
+- [x] `import os` — getcwd, path.exists, getpid, mkdir, remove, rename, environ.get
+- [x] `import sys` — platform, version, maxsize, exit
+- [x] `import random` — seed, randint, random (xorshift64)
+- [x] `import json` — loads, dumps (stubs)
+- [x] `open()` — CreateFileA, read, write, close
+- [x] String methods — upper, lower, find, replace, startswith, endswith
+- [x] IAT expanded to 20 Win32 API slots
+
+### v2.0 — Python Standard Total ✅
+
+- [x] **ANSI terminal colors** — full colored compiler output with architecture diagram
+- [x] **UB error blocking** — compilation blocked with detailed error messages when UB detected
+- [x] **try/except/finally/raise** — error codes, handler jumps, finally blocks, raise with message
+- [x] **with statement** — context managers with auto-close for file handles
+- [x] **Inheritance** — class bases, parent field inheritance, method override
+- [x] **List comprehensions** — `__pyb_listcomp_range` runtime stub
+- [x] **Decorators** — class methods, static dispatch
+- [x] **async/await** — parser support, IR passthrough, Await expression handling
+- [x] **generators/yield** — parser support, Yield expression handling
+- [x] **Dataclasses** — class with `__init__`, field access, constructor
+- [x] **String formatting** — f-strings with expressions, format specs
+- [x] **Typing** — List, Dict, Optional, Union type hint passthrough
+- [x] **Import modules** — multi-module compilation, math/os/sys/random/json
+- [x] **numpy-native** — list-based SIMD arrays with HeapAlloc
+- [x] 36/36 pyb test PASS, 57/57 cargo test PASS
+
+### v3.0 — Production Ready ✅
+
+- [x] **async/await state machine** — CoroutineCreate/Resume/Yield IR, asyncio.run() routing
+- [x] **generators/yield** — GeneratorCreate/Next/Send IR, `__pyb_gen_next` runtime stub
+- [x] **@property / @lru\_cache** — PropertyGet/Set IR, LruCacheCheck/Store IR instructions
+- [x] **numpy AVX2 SIMD** — VMOVAPS/VADDPS/VMULPS/VSQRTPS YMM codegen, np.sum/max/min/dot stubs
+- [x] **C extension compatibility** — ctypes.CDLL routing, DllLoad/GetProc/Call IR instructions
+- [x] **Optimizer pipeline** — constant folding (int+float BinOp), dead code elimination (Nop removal)
+- [x] **sum()/next() builtins** — wired to numpy runtime stubs
+- [x] 44/44 pyb test PASS, 57/57 cargo test PASS
+
+### v4.0 — Distribution
+
+- [ ] PyPI-compatible distribution
+- [ ] Linux ELF syscall stubs (write/mmap/exit)
+- [ ] Cross-compilation targets
+- [ ] Incremental compilation
 
 ---
 
 ## Licencia
 
-Apache License 2.0 — 2026
+Este software esta protegido bajo la **TECHNE LICENSE v1.0**.
+
+> *"El arte pertenece al artesano. Su uso da frutos que deben compartirse."*
+
+```text
+TECHNE LICENSE v1.0 — Binary Is Binary
+Copyright (C) 2026 Eddi Andree Salazar Matos — Lima, Peru
+```
+
+| Uso | Costo |
+| --- | --- |
+| Personal / individual | **GRATIS** |
+| Estudiantes / educacion | **GRATIS** |
+| Open source (OSI) | **GRATIS** |
+| ONG / nonprofit | **GRATIS** |
+| Startup < $1M/year | **GRATIS** |
+| Empresa > $1M revenue | **10% royalty** sobre revenue atribuible |
+| Enterprise / buyout | Negociable — contactar al autor |
+
+Ver el archivo completo: [`TECHNE_LICENSE_v1.0.license`](TECHNE_LICENSE_v1.0.license)
+
+Contacto para licencias comerciales: **<eddi.salazar.dev@gmail.com>**
 
 ---
 
 ## Autor
 
-**Eddi Andreé Salazar Matos**  
-Lima, Perú 🇵🇪  
+**Eddi Andree Salazar Matos**
+Lima, Peru 🇵🇪
 1 dev — Binary Is Binary 💀🦈
+
+GitHub: [github.com/AndreeSalazar](https://github.com/AndreeSalazar)
+Email: <eddi.salazar.dev@gmail.com>
 
 ---
 
 *"Python sin runtime — sin GIL — sin CPython — sin linker — 16 hasta 256 bits"*
+*Licensed under Techne v1.0 — Lima, Peru 🇵🇪 — 2026*

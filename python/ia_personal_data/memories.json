@@ -1,0 +1,767 @@
+{
+  "memories": [
+    {
+      "content": "Usuario: Hola",
+      "timestamp": 1766612032.3123682,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "conversations"
+    },
+    {
+      "content": "El usuario se llama Carlos",
+      "timestamp": 1766612032.4139616,
+      "importance": 2.0,
+      "access_count": 0,
+      "category": "personal"
+    },
+    {
+      "content": "Al usuario le interesa: la programación",
+      "timestamp": 1766612032.5163903,
+      "importance": 1.5,
+      "access_count": 0,
+      "category": "preferences"
+    },
+    {
+      "content": "estoy aprendiendo python",
+      "timestamp": 1766612032.6176798,
+      "importance": 1.5,
+      "access_count": 0,
+      "category": "facts"
+    },
+    {
+      "content": "Usuario: ¿Qué sabes de mí?",
+      "timestamp": 1766612033.7819602,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "conversations"
+    },
+    {
+      "content": "Usuario: perfil",
+      "timestamp": 1766612033.8836133,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "conversations"
+    },
+    {
+      "content": "Usuario: memoria",
+      "timestamp": 1766612033.985642,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "conversations"
+    },
+    {
+      "content": "Usuario: busca programación",
+      "timestamp": 1766612034.0866785,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "conversations"
+    },
+    {
+      "content": "Test memory item 0",
+      "timestamp": 1766612107.3465776,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 1",
+      "timestamp": 1766612107.3475816,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 2",
+      "timestamp": 1766612107.3475816,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 3",
+      "timestamp": 1766612107.34864,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 4",
+      "timestamp": 1766612107.34864,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 5",
+      "timestamp": 1766612107.34864,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 6",
+      "timestamp": 1766612107.3501446,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 7",
+      "timestamp": 1766612107.3501446,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 8",
+      "timestamp": 1766612107.3501446,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 9",
+      "timestamp": 1766612107.3517058,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 10",
+      "timestamp": 1766612107.3527114,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 11",
+      "timestamp": 1766612107.3527114,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 12",
+      "timestamp": 1766612107.3537107,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 13",
+      "timestamp": 1766612107.3537107,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 14",
+      "timestamp": 1766612107.35471,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 15",
+      "timestamp": 1766612107.35471,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 16",
+      "timestamp": 1766612107.3557107,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 17",
+      "timestamp": 1766612107.3567104,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 18",
+      "timestamp": 1766612107.3567104,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 19",
+      "timestamp": 1766612107.3567104,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 20",
+      "timestamp": 1766612107.3577394,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 21",
+      "timestamp": 1766612107.3587387,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 22",
+      "timestamp": 1766612107.3587387,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 23",
+      "timestamp": 1766612107.3587387,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 24",
+      "timestamp": 1766612107.3602428,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 25",
+      "timestamp": 1766612107.3602428,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 26",
+      "timestamp": 1766612107.3612502,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 27",
+      "timestamp": 1766612107.362248,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 28",
+      "timestamp": 1766612107.362248,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 29",
+      "timestamp": 1766612107.3632479,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 30",
+      "timestamp": 1766612107.3642476,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 31",
+      "timestamp": 1766612107.3642476,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 32",
+      "timestamp": 1766612107.3657956,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 33",
+      "timestamp": 1766612107.3657956,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 34",
+      "timestamp": 1766612107.3668003,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 35",
+      "timestamp": 1766612107.3678687,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 36",
+      "timestamp": 1766612107.3688698,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 37",
+      "timestamp": 1766612107.3688698,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 38",
+      "timestamp": 1766612107.3698688,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 39",
+      "timestamp": 1766612107.3708682,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 40",
+      "timestamp": 1766612107.3718684,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 41",
+      "timestamp": 1766612107.3728688,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 42",
+      "timestamp": 1766612107.3728688,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 43",
+      "timestamp": 1766612107.3743732,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 44",
+      "timestamp": 1766612107.3758893,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 45",
+      "timestamp": 1766612107.3758893,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 46",
+      "timestamp": 1766612107.3768947,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 47",
+      "timestamp": 1766612107.3779871,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 48",
+      "timestamp": 1766612107.378986,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 49",
+      "timestamp": 1766612107.3799853,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 50",
+      "timestamp": 1766612107.3809867,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 51",
+      "timestamp": 1766612107.382986,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 52",
+      "timestamp": 1766612107.3839867,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 53",
+      "timestamp": 1766612107.3849866,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 54",
+      "timestamp": 1766612107.3849866,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 55",
+      "timestamp": 1766612107.3864913,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 56",
+      "timestamp": 1766612107.3874965,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 57",
+      "timestamp": 1766612107.3885784,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 58",
+      "timestamp": 1766612107.3895772,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 59",
+      "timestamp": 1766612107.3905773,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 60",
+      "timestamp": 1766612107.3915772,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 61",
+      "timestamp": 1766612107.3925762,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 62",
+      "timestamp": 1766612107.3935812,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 63",
+      "timestamp": 1766612107.3945782,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 64",
+      "timestamp": 1766612107.395578,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 65",
+      "timestamp": 1766612107.3965783,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 66",
+      "timestamp": 1766612107.3976393,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 67",
+      "timestamp": 1766612107.398639,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 68",
+      "timestamp": 1766612107.4001427,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 69",
+      "timestamp": 1766612107.4001427,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 70",
+      "timestamp": 1766612107.4017348,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 71",
+      "timestamp": 1766612107.4027407,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 72",
+      "timestamp": 1766612107.40374,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 73",
+      "timestamp": 1766612107.4047396,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 74",
+      "timestamp": 1766612107.4057398,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 75",
+      "timestamp": 1766612107.4078014,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 76",
+      "timestamp": 1766612107.4088013,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 77",
+      "timestamp": 1766612107.4103055,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 78",
+      "timestamp": 1766612107.4113107,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 79",
+      "timestamp": 1766612107.4125686,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 80",
+      "timestamp": 1766612107.4125686,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 81",
+      "timestamp": 1766612107.4146059,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 82",
+      "timestamp": 1766612107.4166408,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 83",
+      "timestamp": 1766612107.4172647,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 84",
+      "timestamp": 1766612107.4192693,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 85",
+      "timestamp": 1766612107.4212723,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 86",
+      "timestamp": 1766612107.4232688,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 87",
+      "timestamp": 1766612107.4242687,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 88",
+      "timestamp": 1766612107.4267752,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 89",
+      "timestamp": 1766612107.4277806,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 90",
+      "timestamp": 1766612107.4297798,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 91",
+      "timestamp": 1766612107.4317796,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 92",
+      "timestamp": 1766612107.4327803,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 93",
+      "timestamp": 1766612107.4347808,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 94",
+      "timestamp": 1766612107.4357834,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 95",
+      "timestamp": 1766612107.4372852,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 96",
+      "timestamp": 1766612107.438288,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 97",
+      "timestamp": 1766612107.439288,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 98",
+      "timestamp": 1766612107.4402869,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    },
+    {
+      "content": "Test memory item 99",
+      "timestamp": 1766612107.4422872,
+      "importance": 1.0,
+      "access_count": 0,
+      "category": "general"
+    }
+  ],
+  "categories": [
+    "general",
+    "facts",
+    "personal",
+    "preferences",
+    "conversations"
+  ]
+}

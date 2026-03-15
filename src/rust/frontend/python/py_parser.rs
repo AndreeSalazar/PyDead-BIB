@@ -474,6 +474,39 @@ impl PyParser {
     fn parse_expr_or_assign(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
         let expr = self.parse_expr()?;
 
+        // Check for tuple target: x, y = ...
+        if self.check(&PyToken::Comma) {
+            let mut elts = vec![expr];
+            while self.check(&PyToken::Comma) {
+                self.advance_tok();
+                if self.check(&PyToken::Assign) { break; }
+                elts.push(self.parse_expr()?);
+            }
+            if self.check(&PyToken::Assign) {
+                self.advance_tok();
+                // Parse value side — may also be a tuple
+                let first_val = self.parse_expr()?;
+                if self.check(&PyToken::Comma) {
+                    let mut vals = vec![first_val];
+                    while self.check(&PyToken::Comma) {
+                        self.advance_tok();
+                        if self.is_at_end() || self.check(&PyToken::Newline) { break; }
+                        vals.push(self.parse_expr()?);
+                    }
+                    return Ok(PyStmt::Assign {
+                        targets: vec![PyExpr::Tuple(elts)],
+                        value: PyExpr::Tuple(vals),
+                    });
+                }
+                return Ok(PyStmt::Assign {
+                    targets: vec![PyExpr::Tuple(elts)],
+                    value: first_val,
+                });
+            }
+            // Not an assignment — it's a tuple expression
+            return Ok(PyStmt::Expr(PyExpr::Tuple(elts)));
+        }
+
         // Check for assignment
         if self.check(&PyToken::Assign) {
             self.advance_tok();

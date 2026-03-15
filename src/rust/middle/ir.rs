@@ -110,7 +110,64 @@ pub enum IRInstruction {
     PrintInt,               // print RAX as decimal integer
     PrintFloat,             // print XMM0 as float
     PrintNewline,           // print "\n"
+    PrintChar,              // print AL as single character
     ExitProcess,            // exit with RAX as exit code
+
+    // Math builtins (result in XMM0 or RAX)
+    MathSqrt,               // SQRTSD XMM0, XMM0
+    MathFloor,              // ROUNDSD XMM0, XMM0, 1 → CVTTSD2SI
+    MathCeil,               // ROUNDSD XMM0, XMM0, 2 → CVTTSD2SI
+    MathSin,                // x87 FSIN
+    MathCos,                // x87 FCOS
+    MathLog,                // x87 FYL2X
+    MathAbsFloat,           // ANDPD sign mask
+    MathAbsInt,             // NEG + CMOV
+    MathLoadConst(String),  // load named float constant (pi, e)
+
+    // Int builtins
+    BuiltinMin,             // min(RAX, RCX)
+    BuiltinMax,             // max(RAX, RCX)
+    BuiltinChr,             // chr(RAX) → print char
+    BuiltinOrd,             // ord(char) → RAX
+
+    // Exception handling
+    TryBegin(String),           // label for except handler
+    TryEnd,                     // clear error state
+    Raise { exc_type: String, message: Option<Box<IRInstruction>> },
+    CheckError(String),         // branch to label if error set
+    ClearError,
+    FinallyBegin,
+    FinallyEnd,
+
+    // v3.0 — Coroutine / async state machine
+    CoroutineCreate { func: String },       // create coroutine struct on heap
+    CoroutineResume,                        // resume coroutine (RAX = coro ptr)
+    CoroutineYield,                         // yield value from coroutine
+
+    // v3.0 — Generator protocol
+    GeneratorCreate { func: String },       // create generator struct
+    GeneratorNext,                          // call next() on generator
+    GeneratorSend(Box<IRInstruction>),      // send value to generator
+
+    // v3.0 — Property descriptor
+    PropertyGet { obj: String, name: String },
+    PropertySet { obj: String, name: String },
+
+    // v3.0 — LRU Cache
+    LruCacheCheck { func: String, key: Box<IRInstruction> },
+    LruCacheStore { func: String, key: Box<IRInstruction>, value: Box<IRInstruction> },
+
+    // v3.0 — SIMD AVX2 (YMM 256-bit)
+    SimdLoad { label: String },             // VMOVAPS ymm, [data]
+    SimdOp { op: String, src: String },     // VADDPS/VMULPS/VSUBPS/VDIVPS
+    SimdStore { label: String },            // VMOVAPS [data], ymm
+    SimdReduce { op: String },              // horizontal reduce (sum/max/min)
+    SimdSqrt,                               // VSQRTPS ymm
+
+    // v3.0 — C extension / DLL
+    DllLoad { path: String },               // LoadLibraryA
+    DllGetProc { name: String },            // GetProcAddress
+    DllCall { func_ptr: String, args: Vec<IRInstruction> },
 
     // No-op
     Nop,
@@ -154,4 +211,73 @@ pub enum IRCmpOp {
     Ge,
     In,
     NotIn,
+}
+
+// ══════════════════════════════════════════════════════════
+// v3.0 — Optimization passes
+// ══════════════════════════════════════════════════════════
+
+/// Constant folding: evaluate BinOp(Const, Const) at compile time
+pub fn optimize_constant_folding(func: &mut IRFunction) -> usize {
+    let mut folded = 0;
+    let len = func.body.len();
+    for i in 0..len {
+        let new_instr = match &func.body[i] {
+            IRInstruction::BinOp { op, left, right } => {
+                if let (IRInstruction::LoadConst(IRConstValue::Int(a)),
+                        IRInstruction::LoadConst(IRConstValue::Int(b))) = (left.as_ref(), right.as_ref()) {
+                    let result = match op {
+                        IROp::Add => Some(a.wrapping_add(*b)),
+                        IROp::Sub => Some(a.wrapping_sub(*b)),
+                        IROp::Mul => Some(a.wrapping_mul(*b)),
+                        IROp::Div if *b != 0 => Some(a / b),
+                        IROp::FloorDiv if *b != 0 => Some(a / b),
+                        IROp::Mod if *b != 0 => Some(a % b),
+                        IROp::Pow => Some(a.wrapping_pow(*b as u32)),
+                        IROp::Shl => Some(a << (*b as u32)),
+                        IROp::Shr => Some(a >> (*b as u32)),
+                        IROp::And => Some(a & b),
+                        IROp::Or => Some(a | b),
+                        IROp::Xor => Some(a ^ b),
+                        _ => None,
+                    };
+                    result.map(|v| IRInstruction::LoadConst(IRConstValue::Int(v)))
+                } else if let (IRInstruction::LoadConst(IRConstValue::Float(a)),
+                               IRInstruction::LoadConst(IRConstValue::Float(b))) = (left.as_ref(), right.as_ref()) {
+                    let result = match op {
+                        IROp::Add => Some(a + b),
+                        IROp::Sub => Some(a - b),
+                        IROp::Mul => Some(a * b),
+                        IROp::Div if *b != 0.0 => Some(a / b),
+                        _ => None,
+                    };
+                    result.map(|v| IRInstruction::LoadConst(IRConstValue::Float(v)))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+        if let Some(optimized) = new_instr {
+            func.body[i] = optimized;
+            folded += 1;
+        }
+    }
+    folded
+}
+
+/// Dead code elimination: remove Nop instructions and unreachable code after Return
+pub fn optimize_dead_code_elimination(func: &mut IRFunction) -> usize {
+    let before = func.body.len();
+    // Remove Nop instructions
+    func.body.retain(|instr| !matches!(instr, IRInstruction::Nop));
+    let eliminated = before - func.body.len();
+    eliminated
+}
+
+/// Run all optimization passes on a function
+pub fn optimize_function(func: &mut IRFunction) -> (usize, usize) {
+    let folded = optimize_constant_folding(func);
+    let eliminated = optimize_dead_code_elimination(func);
+    (folded, eliminated)
 }
