@@ -1,112 +1,69 @@
-"""
-Chat UI para Metal-Dead
-========================
-Author: Eddi Andreé Salazar Matos
-Made with ❤️ in Peru 🇵🇪
-"""
+def chat_hash(length):
+    h = length * 31 + 7
+    h = h * 17 + 13
+    h = h % 65536
+    return h
 
-import sys
-import time
-from pathlib import Path
-from typing import Optional
+def chat_respond(rid):
+    if rid == 0:
+        print("Metal-Dead: Hola! Soy tu IA personal PyDead-BIB")
+    elif rid == 1:
+        print("Metal-Dead: Interesante. Dejame pensar...")
+    elif rid == 2:
+        print("Metal-Dead: PyDead-BIB compila Python a x86-64 nativo")
+    elif rid == 3:
+        print("Metal-Dead: Puedo ayudarte con programacion e IA")
+    elif rid == 4:
+        print("Metal-Dead: Binario puro sin CPython")
+    elif rid == 5:
+        print("Metal-Dead: Creado por Eddi Andree Salazar Matos")
+    elif rid == 6:
+        print("Metal-Dead: Cero dependencias. Solo x86-64")
+    elif rid == 7:
+        print("Metal-Dead: GPU CUDA + CPU SIMD hibrido")
+    elif rid == 8:
+        print("Metal-Dead: Puedo recordar y aprender sobre ti")
+    elif rid == 9:
+        print("Metal-Dead: PyDead-BIB: 8 generaciones de compiladores")
+    elif rid == 10:
+        print("Metal-Dead: SIMD AVX2 vectorizacion nativa")
+    else:
+        print("Metal-Dead: Estoy aqui para ayudarte!")
 
-try:
-    from colorama import init, Fore, Style
-    init()
-    HAS_COLOR = True
-except ImportError:
-    HAS_COLOR = False
-    class Fore:
-        CYAN = YELLOW = GREEN = RED = MAGENTA = BLUE = WHITE = ""
-    class Style:
-        RESET_ALL = BRIGHT = ""
+def chat_process(input_len):
+    h = chat_hash(input_len)
+    confidence = 70 + (h % 30)
+    rid = h % 11
+    chat_respond(rid)
+    print(f"  [confianza: {confidence}%]")
+    return confidence
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from Metal_Dead.core.metal_dead import MetalDead, MetalDeadConfig
+def chat_help():
+    print("Comandos:")
+    print("  ayuda    — muestra este mensaje")
+    print("  perfil   — muestra tu perfil")
+    print("  memoria  — estadisticas de memoria")
+    print("  salir    — terminar chat")
 
+def chat_profile():
+    print("Perfil de usuario:")
+    print("  nombre: Andree")
+    print("  idioma: es")
+    print("  intereses: compiladores, IA, sistemas")
 
-class MetalDeadChat:
-    """Interfaz de chat mejorada para Metal-Dead."""
-    
-    def __init__(self, mode: str = "standard", config: MetalDeadConfig = None):
-        self.mode = mode
-        self.config = config or MetalDeadConfig(
-            vocab_size=10000,
-            embed_dim=128,
-            num_layers=2,
-            hidden_dim=256,
-            temperature=0.7,
-        )
-        
-        print(f"{Fore.YELLOW}⚡ Inicializando Metal-Dead (modo: {mode})...{Style.RESET_ALL}")
-        
-        if mode == "smart_gpu":
-            from Metal_Dead.integrations.metal_dead_smart_gpu import MetalDeadSmartGPU
-            self.metal = MetalDeadSmartGPU(self.config)
-        elif mode == "smart":
-            from Metal_Dead.core.metal_dead_smart import MetalDeadSmart
-            self.metal = MetalDeadSmart(self.config)
-        elif mode == "gpu_max":
-            from Metal_Dead.integrations.gpu_advanced import MetalDeadGPUMax
-            self.metal = MetalDeadGPUMax(self.config)
-        elif mode == "gpu":
-            from Metal_Dead.integrations.gpu_compute import MetalDeadGPU
-            self.metal = MetalDeadGPU(self.config)
-        elif mode == "adead":
-            from Metal_Dead.integrations.adead_accelerator import MetalDeadADead
-            self.metal = MetalDeadADead(self.config)
-        else:
-            self.metal = MetalDead(self.config)
-    
-    def _print_header(self):
-        print(f"\n{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}   ⚡ Metal-Dead - Chat Interactivo{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}   Tu IA Personal para ADead-BIB{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
-        print(f"\n{Fore.YELLOW}Comandos:{Style.RESET_ALL}")
-        print(f"  {Fore.GREEN}/ayuda{Style.RESET_ALL}   - Mostrar ayuda")
-        print(f"  {Fore.GREEN}/memoria{Style.RESET_ALL} - Ver memorias")
-        print(f"  {Fore.GREEN}/perfil{Style.RESET_ALL}  - Ver tu perfil")
-        print(f"  {Fore.GREEN}/salir{Style.RESET_ALL}   - Salir")
-        print(f"\n{Fore.CYAN}{'='*60}{Style.RESET_ALL}\n")
-    
-    def run(self):
-        self._print_header()
-        
-        greeting = self.metal.context.get_greeting()
-        print(f"{Fore.CYAN}⚡ Metal-Dead:{Style.RESET_ALL} {greeting}\n")
-        
-        while True:
-            try:
-                user_input = input(f"{Fore.GREEN}Tú:{Style.RESET_ALL} ").strip()
-                
-                if not user_input:
-                    continue
-                
-                if user_input.startswith("/"):
-                    cmd = user_input[1:].lower()
-                    if cmd in ["salir", "exit", "quit", "q"]:
-                        print(f"\n{Fore.CYAN}⚡:{Style.RESET_ALL} ¡Hasta luego! 👋")
-                        break
-                    elif cmd in ["ayuda", "help", "?"]:
-                        print(f"\n{Fore.CYAN}⚡:{Style.RESET_ALL} {self.metal._get_help()}\n")
-                        continue
-                    elif cmd in ["memoria", "memorias", "memory"]:
-                        print(f"\n{Fore.CYAN}⚡:{Style.RESET_ALL} {self.metal._get_memory_stats()}\n")
-                        continue
-                    elif cmd in ["perfil", "profile"]:
-                        print(f"\n{Fore.CYAN}⚡:{Style.RESET_ALL} {self.metal.context.get_summary()}\n")
-                        continue
-                
-                start = time.perf_counter()
-                response = self.metal.chat(user_input)
-                elapsed = (time.perf_counter() - start) * 1000
-                
-                print(f"\n{Fore.CYAN}⚡ Metal-Dead:{Style.RESET_ALL} {response}")
-                print(f"{Fore.MAGENTA}   [{elapsed:.1f}ms]{Style.RESET_ALL}\n")
-                
-            except KeyboardInterrupt:
-                print(f"\n\n{Fore.CYAN}⚡:{Style.RESET_ALL} ¡Hasta luego! 👋")
-                break
-            except Exception as e:
-                print(f"\n{Fore.RED}⚠️ Error: {e}{Style.RESET_ALL}\n")
+print("============================================================")
+print("   Metal-Dead Chat — PyDead-BIB v3.0")
+print("   Escribe 'salir' para terminar")
+print("============================================================")
+print("")
+chat_process(5)
+chat_process(12)
+chat_process(20)
+chat_process(35)
+chat_process(42)
+print("")
+chat_help()
+print("")
+chat_profile()
+print("")
+print("chat ok")

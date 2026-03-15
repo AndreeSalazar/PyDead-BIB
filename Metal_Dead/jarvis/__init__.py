@@ -1,7 +1,2 @@
-"""
-Metal_Dead JARVIS - Sistema de Asistente Inteligente
-"""
-
-from .jarvis import MetalJarvis
-
-__all__ = ["MetalJarvis"]
+print("Metal-Dead JARVIS para PyDead-BIB v3.0")
+print("jarvis ok")

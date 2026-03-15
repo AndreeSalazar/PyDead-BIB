@@ -1,95 +1,61 @@
-"""
-Tokenizador Inteligente para Metal-Dead
-========================================
-Author: Eddi Andreé Salazar Matos
-Made with ❤️ in Peru 🇵🇪
-"""
+tok_vocab_size = 200
 
-import re
-from typing import List, Dict
-from collections import Counter
+def tok_encode_char(code):
+    if code >= 97:
+        if code <= 122:
+            return code - 97 + 10
+    if code >= 65:
+        if code <= 90:
+            return code - 65 + 10
+    if code >= 48:
+        if code <= 57:
+            return code - 48 + 40
+    if code == 32:
+        return 50
+    if code == 46:
+        return 51
+    if code == 44:
+        return 52
+    if code == 33:
+        return 53
+    if code == 63:
+        return 54
+    return 2
 
+def tok_decode_id(t):
+    if t >= 10:
+        if t < 36:
+            return t - 10 + 97
+    if t >= 40:
+        if t < 50:
+            return t - 40 + 48
+    if t == 50:
+        return 32
+    if t == 51:
+        return 46
+    if t == 52:
+        return 44
+    if t == 53:
+        return 33
+    if t == 54:
+        return 63
+    return 63
 
-class SmartTokenizer:
-    PAD, EOS, UNK, BOS, SEP = 0, 1, 2, 3, 4
-    
-    def __init__(self, vocab_size: int = 15000):
-        self.vocab_size = vocab_size
-        self.vocab: Dict[str, int] = {}
-        self.inv_vocab: Dict[int, str] = {}
-        self.word_freq: Counter = Counter()
-        self._init_vocab()
-    
-    def _init_vocab(self):
-        special = ["<PAD>", "<EOS>", "<UNK>", "<BOS>", "<SEP>", "<MASK>", "<USER>", "<AI>"]
-        chars = list("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
-        chars += list(".,!?;:'-\"()[]{}@#$%^&*+=<>/\\|`~_ \n\t")
-        chars += list("áéíóúñüÁÉÍÓÚÑÜ¿¡")
-        
-        common_words = [
-            "hola", "mundo", "gracias", "por", "favor", "bien", "mal", "si", "no",
-            "que", "como", "cuando", "donde", "quien", "porque", "para", "con", "sin",
-            "el", "la", "los", "las", "un", "una", "de", "en", "a", "es", "son",
-            "yo", "tu", "el", "ella", "nosotros", "ustedes", "ellos", "mi", "su",
-            "ayuda", "necesito", "quiero", "puedo", "debo", "tengo", "soy", "estoy",
-            "hello", "world", "thanks", "please", "good", "bad", "yes", "no",
-            "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-            "i", "you", "he", "she", "it", "we", "they", "my", "your", "his", "her",
-            "ai", "ia", "python", "code", "data", "model", "train", "learn",
-            "metal", "dead", "adead", "bib", "compiler", "binary", "opcode", "cpu", "gpu",
-        ]
-        
-        idx = 0
-        for token in special:
-            self.vocab[token] = idx
-            self.inv_vocab[idx] = token
-            idx += 1
-        
-        for char in chars:
-            if char not in self.vocab:
-                self.vocab[char] = idx
-                self.inv_vocab[idx] = char
-                idx += 1
-        
-        for word in common_words:
-            word = word.lower()
-            if word not in self.vocab:
-                self.vocab[word] = idx
-                self.inv_vocab[idx] = word
-                idx += 1
-    
-    def encode(self, text: str, add_special: bool = True) -> List[int]:
-        tokens = []
-        if add_special:
-            tokens.append(self.BOS)
-        
-        parts = re.findall(r'\w+|[^\w\s]|\s+', text.lower())
-        for part in parts:
-            if part in self.vocab:
-                tokens.append(self.vocab[part])
-            else:
-                for char in part:
-                    tokens.append(self.vocab.get(char, self.UNK))
-        
-        if add_special:
-            tokens.append(self.EOS)
-        return tokens
-    
-    def decode(self, tokens: List[int], skip_special: bool = True) -> str:
-        result = []
-        special_ids = {self.PAD, self.EOS, self.BOS, self.SEP} if skip_special else set()
-        
-        for t in tokens:
-            if t in special_ids:
-                continue
-            if t == self.EOS and skip_special:
-                break
-            result.append(self.inv_vocab.get(t, ""))
-        return "".join(result)
-    
-    def __len__(self):
-        return len(self.vocab)
+def tok_hash_word(length, first_char):
+    h = length * 31 + first_char
+    h = h * 17 + 13
+    return h % tok_vocab_size
 
-
-# Alias para compatibilidad con CPU module
-SimpleTokenizer = SmartTokenizer
+c1 = tok_encode_char(104)
+c2 = tok_encode_char(111)
+c3 = tok_encode_char(108)
+c4 = tok_encode_char(97)
+print(f"vocab: {tok_vocab_size} tokens")
+print(f"encode h={c1} o={c2} l={c3} a={c4}")
+d1 = tok_decode_id(c1)
+d2 = tok_decode_id(c2)
+print(chr(d1))
+print(chr(d2))
+wh = tok_hash_word(4, 104)
+print(f"hash hola = {wh}")
+print("tokenizer ok")

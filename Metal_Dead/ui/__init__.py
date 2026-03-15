@@ -1,8 +1,2 @@
-"""
-Metal_Dead UI - Interfaces de usuario
-"""
-
-from .chat import MetalDeadChat
-from .cli import main
-
-__all__ = ["MetalDeadChat", "main"]
+print("Metal-Dead UI para PyDead-BIB v3.0")
+print("ui ok")

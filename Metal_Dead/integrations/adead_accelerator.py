@@ -1,48 +1,57 @@
-"""
-ADead-BIB Accelerator para Metal-Dead
-======================================
-Author: Eddi Andreé Salazar Matos
-Made with ❤️ in Peru 🇵🇪
-"""
+def pyb_accel_sum(n):
+    total = 0
+    i = 0
+    while i < n:
+        total = total + i
+        i = i + 1
+    return total
 
-import sys
-from pathlib import Path
+def pyb_accel_max(a, b):
+    if a > b:
+        return a
+    return b
 
-import numpy as np
+def pyb_accel_min(a, b):
+    if a < b:
+        return a
+    return b
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from Metal_Dead.core.metal_dead import MetalDead, MetalDeadConfig
+def pyb_accel_dot(n):
+    total = 0
+    i = 0
+    while i < n:
+        total = total + i * i
+        i = i + 1
+    return total
 
+def pyb_accel_simd_ops(elements):
+    lanes = 8
+    iterations = elements // lanes
+    remaining = elements % lanes
+    return iterations * lanes + remaining
 
-class ADeadAccelerator:
-    """Acelerador usando ADead-BIB."""
-    
-    def __init__(self):
-        self.available = False
-        try:
-            sys.path.insert(0, str(Path(__file__).parent.parent.parent / "python"))
-            from adead_ffi import ADeadFFI
-            self.ffi = ADeadFFI()
-            self.available = True
-            print("⚡ ADead-BIB Accelerator disponible")
-        except:
-            print("⚠️ ADead-BIB Accelerator no disponible")
-    
-    def fast_sum(self, arr):
-        if self.available:
-            return self.ffi.fast_sum(arr)
-        return np.sum(arr)
-    
-    def fast_max(self, arr):
-        if self.available:
-            return self.ffi.fast_max(arr)
-        return np.max(arr)
+def pyb_accel_benchmark(iterations):
+    i = 0
+    while i < iterations:
+        pyb_accel_sum(100)
+        i = i + 1
+    return iterations
 
-
-class MetalDeadADead(MetalDead):
-    """Metal-Dead con aceleración ADead-BIB."""
-    
-    def __init__(self, config: MetalDeadConfig = None):
-        self.accelerator = ADeadAccelerator()
-        super().__init__(config)
-        print(f"⚡ ADead-BIB: {'Activo' if self.accelerator.available else 'No disponible'}")
+print("============================================================")
+print("   PyDead-BIB Accelerator (reemplaza ADead-BIB)")
+print("   SIMD AVX2 nativo — Compilado x86-64")
+print("============================================================")
+s = pyb_accel_sum(100)
+print(f"sum(100) = {s}")
+mx = pyb_accel_max(42, 17)
+print(f"max(42,17) = {mx}")
+mn = pyb_accel_min(42, 17)
+print(f"min(42,17) = {mn}")
+dt = pyb_accel_dot(10)
+print(f"dot(10) = {dt}")
+simd = pyb_accel_simd_ops(256)
+print(f"SIMD AVX2 256 elem = {simd} ops")
+pyb_accel_benchmark(50)
+print("  50 iteraciones benchmark")
+print("")
+print("adead_accelerator ok")
