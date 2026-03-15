@@ -1,0 +1,6 @@
+print(10 + 5)
+print(10 - 3)
+print(4 * 8)
+print(20 // 4)
+print(17 % 5)
+print(2 ** 8)

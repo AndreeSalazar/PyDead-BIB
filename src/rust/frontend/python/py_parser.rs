@@ -173,7 +173,8 @@ impl PyParser {
 
     fn parse_for(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
         self.expect(&PyToken::For)?;
-        let target = self.parse_expr()?;
+        // Parse target as simple name(s), not full expr (avoids consuming 'in' as cmp op)
+        let target = self.parse_atom()?;
         self.expect(&PyToken::In)?;
         let iter = self.parse_expr()?;
         self.expect(&PyToken::Colon)?;
@@ -818,9 +819,34 @@ impl PyParser {
             Some(PyToken::FStringStart(s)) => {
                 let val = s.clone();
                 self.advance_tok();
-                Ok(PyExpr::FString {
-                    parts: vec![FStringPart::Literal(val)],
-                })
+                // Parse f-string parts: split on {expr} patterns
+                let mut parts = Vec::new();
+                let mut remaining = val.as_str();
+                while !remaining.is_empty() {
+                    if let Some(brace_start) = remaining.find('{') {
+                        if brace_start > 0 {
+                            parts.push(FStringPart::Literal(remaining[..brace_start].to_string()));
+                        }
+                        remaining = &remaining[brace_start + 1..];
+                        if let Some(brace_end) = remaining.find('}') {
+                            let expr_str = remaining[..brace_end].trim();
+                            // Simple expression parsing: just a name reference
+                            parts.push(FStringPart::Expression(
+                                PyExpr::Name(expr_str.to_string()),
+                                None,
+                            ));
+                            remaining = &remaining[brace_end + 1..];
+                        } else {
+                            // No closing brace — treat rest as literal
+                            parts.push(FStringPart::Literal(format!("{{{}", remaining)));
+                            break;
+                        }
+                    } else {
+                        parts.push(FStringPart::Literal(remaining.to_string()));
+                        break;
+                    }
+                }
+                Ok(PyExpr::FString { parts })
             }
             Some(PyToken::BytesLiteral(b)) => {
                 let val = b.clone();

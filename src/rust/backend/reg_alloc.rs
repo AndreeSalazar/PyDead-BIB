@@ -79,7 +79,8 @@ pub struct AllocStats {
 // ── Linux x64 ABI: RDI, RSI, RDX, RCX, R8, R9
 const WIN_INT_ARGS: &[X86Reg] = &[X86Reg::RCX, X86Reg::RDX, X86Reg::R8, X86Reg::R9];
 const _LINUX_INT_ARGS: &[X86Reg] = &[X86Reg::RDI, X86Reg::RSI, X86Reg::RDX, X86Reg::RCX, X86Reg::R8, X86Reg::R9];
-const SCRATCH_REGS: &[X86Reg] = &[X86Reg::RAX, X86Reg::RCX, X86Reg::RDX, X86Reg::R8, X86Reg::R9, X86Reg::R10, X86Reg::R11];
+// Local variables use callee-saved registers so they survive across calls and BinOp/Compare codegen
+const SCRATCH_REGS: &[X86Reg] = &[X86Reg::R12, X86Reg::R13, X86Reg::R14, X86Reg::R15, X86Reg::RSI, X86Reg::RDI];
 const _CALLEE_SAVED: &[X86Reg] = &[X86Reg::RBX, X86Reg::R12, X86Reg::R13, X86Reg::R14, X86Reg::R15];
 
 // ── Main allocator ────────────────────────────────────────────

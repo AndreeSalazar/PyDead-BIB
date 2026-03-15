@@ -309,7 +309,7 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
 // ============================================================
 fn run_test_suite() -> Result<(), Box<dyn std::error::Error>> {
     println!("╔══════════════════════════════════════════════════════════════╗");
-    println!("║   PyDead-BIB Test Suite v1.2 💀🦈                           ║");
+    println!("║   PyDead-BIB Test Suite v1.3 💀🦈                           ║");
     println!("╚══════════════════════════════════════════════════════════════╝");
     println!();
 
@@ -321,6 +321,11 @@ fn run_test_suite() -> Result<(), Box<dyn std::error::Error>> {
         ("tests/test_builtins.py", "Builtins"),
         ("tests/test_hello_real.py", "Real Print"),
         ("tests/test_print_types.py", "Print Types"),
+        ("tests/test_float.py", "Float Print"),
+        ("tests/test_arithmetic.py", "Arithmetic"),
+        ("tests/test_if.py", "If/Else"),
+        ("tests/test_loops.py", "Loops"),
+        ("tests/test_fstring.py", "F-Strings"),
     ];
 
     let mut passed = 0;

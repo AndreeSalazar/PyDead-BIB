@@ -1,11 +1,12 @@
 // ============================================================
-// PyDead-BIB ISA Compiler v1.2 — Real Runtime Output
+// PyDead-BIB ISA Compiler v1.3 — Full Runtime
 // ============================================================
 // IR → x86-64 machine code bytes
 // Direct encoding — sin assembler externo — sin NASM
 // Windows: GetStdHandle + WriteFile via IAT
 // Linux: write syscall direct
-// Runtime stubs: __pyb_print_str, __pyb_itoa, __pyb_print_nl
+// Runtime stubs: print_str, itoa, ftoa, print_nl
+// Supports: int, float, str, bool, if/else, for, while, funcs
 // ============================================================
 
 use crate::middle::ir::{IRConstValue, IRCmpOp, IRInstruction, IROp};
@@ -233,6 +234,87 @@ impl Encoder {
         self.data.push(0);
     }
 
+    fn add_data_f64(&mut self, label: &str, val: f64) {
+        // Align to 8 bytes
+        while self.data.len() % 8 != 0 { self.data.push(0); }
+        let offset = self.data.len() as u32;
+        self.data_labels.push((label.to_string(), offset));
+        self.data.extend_from_slice(&val.to_le_bytes());
+    }
+
+    // ── SSE2 float instructions ─────────────────────────────
+    // MOVSD XMM, [RIP+disp32]  — load f64 from data
+    fn movsd_xmm_data(&mut self, xmm: u8, data_label: &str) {
+        // F2 0F 10 /r = MOVSD xmm1, xmm2/m64
+        // ModRM: 00 reg 101 = RIP+disp32
+        self.emit(&[0xF2, 0x0F, 0x10, 0x05 | (xmm << 3)]);
+        let fixup_pos = self.pos();
+        self.emit_u32_le(0);
+        self.data_fixups.push((fixup_pos, data_label.to_string()));
+    }
+
+    // MOVSD xmm1, xmm2
+    fn movsd_xmm_xmm(&mut self, dst: u8, src: u8) {
+        // F2 0F 10 /r (reg-reg: mod=11)
+        self.emit(&[0xF2, 0x0F, 0x10, 0xC0 | (dst << 3) | src]);
+    }
+
+    // ADDSD xmm1, xmm2
+    fn addsd(&mut self, dst: u8, src: u8) {
+        self.emit(&[0xF2, 0x0F, 0x58, 0xC0 | (dst << 3) | src]);
+    }
+    // SUBSD xmm1, xmm2
+    fn subsd(&mut self, dst: u8, src: u8) {
+        self.emit(&[0xF2, 0x0F, 0x5C, 0xC0 | (dst << 3) | src]);
+    }
+    // MULSD xmm1, xmm2
+    fn mulsd(&mut self, dst: u8, src: u8) {
+        self.emit(&[0xF2, 0x0F, 0x59, 0xC0 | (dst << 3) | src]);
+    }
+    // DIVSD xmm1, xmm2
+    fn divsd(&mut self, dst: u8, src: u8) {
+        self.emit(&[0xF2, 0x0F, 0x5E, 0xC0 | (dst << 3) | src]);
+    }
+    // CVTTSD2SI reg64, xmm  (truncate f64 → i64)
+    fn cvttsd2si(&mut self, dst: X86Reg, xmm: u8) {
+        // F2 REX.W 0F 2C /r
+        let mut rex: u8 = 0x48;
+        if dst.encoding() >= 8 { rex |= 0x04; }
+        self.emit(&[0xF2, rex, 0x0F, 0x2C, 0xC0 | ((dst.encoding() & 7) << 3) | xmm]);
+    }
+    // CVTSI2SD xmm, reg64  (i64 → f64)
+    fn cvtsi2sd(&mut self, xmm: u8, src: X86Reg) {
+        // F2 REX.W 0F 2A /r
+        let mut rex: u8 = 0x48;
+        if src.encoding() >= 8 { rex |= 0x01; }
+        self.emit(&[0xF2, rex, 0x0F, 0x2A, 0xC0 | (xmm << 3) | (src.encoding() & 7)]);
+    }
+    // MOVQ RAX, XMM0 (move 64 bits from xmm to gpr)
+    fn movq_rax_xmm0(&mut self) {
+        // 66 48 0F 7E C0 = MOVQ RAX, XMM0
+        self.emit(&[0x66, 0x48, 0x0F, 0x7E, 0xC0]);
+    }
+    // MOVQ XMM0, RAX
+    fn movq_xmm0_rax(&mut self) {
+        // 66 48 0F 6E C0 = MOVQ XMM0, RAX
+        self.emit(&[0x66, 0x48, 0x0F, 0x6E, 0xC0]);
+    }
+    // XORPD xmm, xmm (zero a float register)
+    fn xorpd(&mut self, xmm: u8) {
+        self.emit(&[0x66, 0x0F, 0x57, 0xC0 | (xmm << 3) | xmm]);
+    }
+    // UCOMISD xmm1, xmm2
+    fn ucomisd(&mut self, a: u8, b: u8) {
+        self.emit(&[0x66, 0x0F, 0x2E, 0xC0 | (a << 3) | b]);
+    }
+    // MULSD xmm, [RIP+disp32]
+    fn mulsd_data(&mut self, xmm: u8, label: &str) {
+        self.emit(&[0xF2, 0x0F, 0x59, 0x05 | (xmm << 3)]);
+        let fixup_pos = self.pos();
+        self.emit_u32_le(0);
+        self.data_fixups.push((fixup_pos, label.to_string()));
+    }
+
     fn resolve_label_fixups(&mut self) {
         for (fixup_off, target_lbl) in &self.fixups {
             if let Some((_, target_off)) = self.label_offsets.iter().find(|(n, _)| n == target_lbl) {
@@ -257,6 +339,10 @@ pub fn compile(program: &AllocatedProgram, target: Target) -> CompiledProgram {
     }
     // Always add newline string
     enc.add_data_string("__newline", "\r\n");
+    // Float constants for ftoa
+    enc.add_data_f64("__f64_1e6", 1_000_000.0);
+    enc.add_data_f64("__f64_10", 10.0);
+    enc.add_data_f64("__f64_0", 0.0);
 
     // ── Emit runtime stubs first ──────────────────────────
     emit_runtime_stubs(&mut enc, target);
@@ -485,35 +571,227 @@ fn emit_runtime_stubs(enc: &mut Encoder, target: Target) {
     enc.pop(X86Reg::RSI);
     enc.pop(X86Reg::RBX);
     enc.ret();
+
+    // __pyb_ftoa: XMM0=f64 → print float to stdout
+    // Strategy: convert to string in Rust-like fashion using integer math
+    // 1. Handle sign  2. Print integer part  3. Print '.'  4. Print decimal part
+    enc.label("__pyb_ftoa");
+    enc.push(X86Reg::RBX);
+    enc.push(X86Reg::RSI);
+    enc.push(X86Reg::RDI);
+    enc.sub_rsp(96); // shadow(32) + buf(32) + locals(32)
+
+    // Check sign: UCOMISD XMM0, 0.0
+    enc.xorpd(1); // XMM1 = 0.0
+    enc.ucomisd(0, 1);
+    let ftoa_pos = format!("__ftoa_pos_{}", enc.pos());
+    enc.jcc(0x83, &ftoa_pos); // JAE (not below = positive or zero)
+    // Negative: print '-'
+    enc.emit(&[0xC6, 0x44, 0x24, 0x20, 0x2D]); // mov byte [rsp+32], '-'
+    enc.emit(&[0x48, 0x8D, 0x4C, 0x24, 0x20]); // lea rcx, [rsp+32]
+    enc.mov_imm64(X86Reg::RDX, 1);
+    enc.call_label("__pyb_print_str");
+    // Negate: XMM0 = -XMM0 (XOR with sign bit)
+    // Actually simpler: SUBSD XMM1, XMM0 then MOVSD XMM0, XMM1 (XMM1 was 0)
+    enc.xorpd(1);
+    enc.subsd(1, 0);
+    enc.movsd_xmm_xmm(0, 1);
+    enc.label(&ftoa_pos);
+
+    // Save XMM0 to stack [rsp+48] (we'll need it after printing integer part)
+    // MOVSD [rsp+0x30], XMM0
+    enc.emit(&[0xF2, 0x0F, 0x11, 0x44, 0x24, 0x30]);
+
+    // Integer part: CVTTSD2SI RAX, XMM0
+    enc.cvttsd2si(X86Reg::RAX, 0);
+    // Save integer part in RSI
+    enc.mov_rr(X86Reg::RSI, X86Reg::RAX);
+    // Print integer part via __pyb_itoa
+    enc.call_label("__pyb_itoa");
+
+    // Print '.'
+    enc.emit(&[0xC6, 0x44, 0x24, 0x20, 0x2E]); // mov byte [rsp+32], '.'
+    enc.emit(&[0x48, 0x8D, 0x4C, 0x24, 0x20]); // lea rcx, [rsp+32]
+    enc.mov_imm64(X86Reg::RDX, 1);
+    enc.call_label("__pyb_print_str");
+
+    // Fractional part: XMM0 = saved_value - integer_part
+    // Reload saved float
+    enc.emit(&[0xF2, 0x0F, 0x10, 0x44, 0x24, 0x30]); // MOVSD XMM0, [rsp+0x30]
+    // Convert integer part back to float in XMM1
+    enc.cvtsi2sd(1, X86Reg::RSI);
+    // XMM0 = XMM0 - XMM1 (fractional part)
+    enc.subsd(0, 1);
+    // Multiply by 1,000,000 to get 6 decimal digits
+    enc.mulsd_data(0, "__f64_1e6");
+    // CVTTSD2SI RAX, XMM0
+    enc.cvttsd2si(X86Reg::RAX, 0);
+    // Make sure it's positive (in case of tiny floating point errors)
+    // TEST RAX, RAX; JNS skip; NEG RAX; skip:
+    enc.rex_w(); enc.emit(&[0x85, 0xC0]);
+    let ftoa_frac_pos = format!("__ftoa_fp_{}", enc.pos());
+    enc.jcc(0x89, &ftoa_frac_pos); // JNS
+    enc.rex_w(); enc.emit(&[0xF7, 0xD8]); // NEG RAX
+    enc.label(&ftoa_frac_pos);
+
+    // Save frac value in RDI
+    enc.mov_rr(X86Reg::RDI, X86Reg::RAX);
+
+    // Convert fractional digits to buffer, right-to-left, exactly 6 digits
+    // We'll write 6 digits into buf at [rsp+32..rsp+37], then trim trailing zeros
+    // lea rbx, [rsp+38] (one past end, DEC before each write)
+    enc.emit(&[0x48, 0x8D, 0x5C, 0x24, 0x26]); // lea rbx, [rsp+38]
+    enc.mov_imm64(X86Reg::RSI, 6); // digit count
+    enc.mov_rr(X86Reg::RAX, X86Reg::RDI);
+
+    // Loop: extract 6 digits
+    let frac_loop = format!("__ftoa_fl_{}", enc.pos());
+    enc.label(&frac_loop);
+    enc.rex_w(); enc.emit(&[0x83, 0xFE, 0x00]); // CMP RSI, 0
+    let frac_done = format!("__ftoa_fd_{}", enc.pos());
+    enc.jcc(0x84, &frac_done); // JE done
+    enc.xor_rr(X86Reg::RDX);
+    enc.mov_imm64(X86Reg::RCX, 10);
+    enc.rex_w(); enc.emit(&[0xF7, 0xF1]); // DIV RCX
+    enc.rex_w(); enc.emit(&[0x83, 0xC2, 0x30]); // ADD RDX, '0'
+    // DEC RBX
+    enc.rex_w(); enc.emit(&[0xFF, 0xCB]);
+    // MOV [RBX], DL
+    enc.emit(&[0x88, 0x13]);
+    // DEC RSI
+    enc.rex_w(); enc.emit(&[0xFF, 0xCE]);
+    enc.jmp(&frac_loop);
+    enc.label(&frac_done);
+
+    // Now buf at [rsp+32..rsp+37] has 6 digits. Trim trailing '0's.
+    // RBX points to start (rsp+32 after loop), end = rsp+37
+    // lea rdi, [rsp+38] = one past last digit
+    enc.emit(&[0x48, 0x8D, 0x7C, 0x24, 0x26]); // lea rdi, [rsp+38]
+    // Trim loop: while (rdi-1) > rbx && *(rdi-1) == '0', rdi--
+    let trim_loop = format!("__ftoa_tl_{}", enc.pos());
+    enc.label(&trim_loop);
+    // DEC RDI (tentative)
+    enc.rex_w(); enc.emit(&[0xFF, 0xCF]);
+    // CMP RDI, RBX
+    enc.cmp_rr(X86Reg::RDI, X86Reg::RBX);
+    let trim_done = format!("__ftoa_td_{}", enc.pos());
+    enc.jcc(0x86, &trim_done); // JBE (rdi <= rbx, keep at least 1 digit)
+    // CMP byte [RDI], '0'
+    enc.emit(&[0x80, 0x3F, 0x30]);
+    enc.jcc(0x84, &trim_loop); // JE → continue trimming
+    // Not '0' → undo the DEC (we want rdi to point past last non-zero)
+    enc.rex_w(); enc.emit(&[0xFF, 0xC7]); // INC RDI
+    enc.label(&trim_done);
+
+    // Print: ptr=RBX, len=RDI-RBX
+    enc.mov_rr(X86Reg::RCX, X86Reg::RBX);
+    enc.mov_rr(X86Reg::RDX, X86Reg::RDI);
+    enc.sub_rr(X86Reg::RDX, X86Reg::RBX);
+    // Ensure at least 1 digit (for x.0 case)
+    enc.rex_w(); enc.emit(&[0x83, 0xFA, 0x01]); // CMP RDX, 1
+    let print_frac = format!("__ftoa_pf_{}", enc.pos());
+    enc.jcc(0x8D, &print_frac); // JGE
+    enc.mov_imm64(X86Reg::RDX, 1);
+    enc.label(&print_frac);
+    enc.call_label("__pyb_print_str");
+
+    enc.add_rsp(96);
+    enc.pop(X86Reg::RDI);
+    enc.pop(X86Reg::RSI);
+    enc.pop(X86Reg::RBX);
+    enc.ret();
+
+    // __pyb_pow: RAX=base, RCX=exponent → RAX=result (integer power)
+    enc.label("__pyb_pow");
+    enc.push(X86Reg::RBX);
+    enc.push(X86Reg::RCX);
+    enc.mov_rr(X86Reg::RBX, X86Reg::RAX); // base
+    enc.mov_imm64(X86Reg::RAX, 1);        // result = 1
+    let pow_loop = format!("__pow_l_{}", enc.pos());
+    enc.label(&pow_loop);
+    enc.rex_w(); enc.emit(&[0x85, 0xC9]); // TEST RCX, RCX
+    let pow_done = format!("__pow_d_{}", enc.pos());
+    enc.jcc(0x84, &pow_done); // JE → done
+    enc.imul_rr(X86Reg::RAX, X86Reg::RBX); // result *= base
+    enc.rex_w(); enc.emit(&[0xFF, 0xC9]); // DEC RCX
+    enc.jmp(&pow_loop);
+    enc.label(&pow_done);
+    enc.pop(X86Reg::RCX);
+    enc.pop(X86Reg::RBX);
+    enc.ret();
+}
+
+// Callee-saved registers that we may use for local variables
+const CALLEE_SAVED_ORDER: &[X86Reg] = &[
+    X86Reg::RBX, X86Reg::R12, X86Reg::R13, X86Reg::R14, X86Reg::R15,
+    X86Reg::RSI, X86Reg::RDI,
+];
+
+fn get_used_callee_saved(func: &AllocatedFunction) -> Vec<X86Reg> {
+    let mut saved = vec![X86Reg::RBX]; // Always save RBX
+    for &reg in CALLEE_SAVED_ORDER {
+        if reg == X86Reg::RBX { continue; }
+        if func.reg_map.iter().any(|(_, r)| *r == reg) {
+            saved.push(reg);
+        }
+    }
+    saved
+}
+
+fn emit_function_epilogue(saved_regs: &[X86Reg], stack_size: usize, enc: &mut Encoder) {
+    if stack_size > 0 && stack_size <= 127 {
+        enc.add_rsp(stack_size as u8);
+    }
+    // Pop in reverse order
+    for reg in saved_regs.iter().rev() {
+        enc.pop(*reg);
+    }
+    enc.ret();
 }
 
 // ── Compile a user function ───────────────────────────────────
 fn compile_function(func: &AllocatedFunction, enc: &mut Encoder, _target: Target) {
     enc.label(&func.name);
-    enc.push(X86Reg::RBX);
-    if func.stack_size > 0 && func.stack_size <= 127 {
-        enc.sub_rsp(func.stack_size as u8);
+
+    let saved_regs = get_used_callee_saved(func);
+
+    // Prologue: push callee-saved registers
+    for &reg in &saved_regs {
+        enc.push(reg);
+    }
+
+    // Compute actual stack size: must be 16-byte aligned including pushes
+    // Each push is 8 bytes. With ret addr (8), total = 8 + saved*8 + stack_size
+    // Needs to be 16-aligned before any CALL
+    let push_bytes = saved_regs.len() * 8 + 8; // +8 for ret addr
+    let mut stack = func.stack_size;
+    if (push_bytes + stack) % 16 != 0 {
+        stack += 8;
+    }
+
+    if stack > 0 && stack <= 127 {
+        enc.sub_rsp(stack as u8);
     }
 
     for instr in &func.body {
-        compile_instruction(instr, func, enc);
+        compile_instruction(instr, func, enc, &saved_regs, stack);
     }
 
     if !func.body.iter().any(|i| matches!(i, IRInstruction::Return | IRInstruction::ReturnVoid)) {
-        if func.stack_size > 0 && func.stack_size <= 127 {
-            enc.add_rsp(func.stack_size as u8);
-        }
-        enc.pop(X86Reg::RBX);
-        enc.ret();
+        emit_function_epilogue(&saved_regs, stack, enc);
     }
 }
 
-fn compile_instruction(instr: &IRInstruction, func: &AllocatedFunction, enc: &mut Encoder) {
+fn compile_instruction(instr: &IRInstruction, func: &AllocatedFunction, enc: &mut Encoder, saved_regs: &[X86Reg], stack_size: usize) {
     match instr {
         IRInstruction::LoadConst(val) => {
             match val {
                 IRConstValue::Int(n) => enc.mov_imm64(X86Reg::RAX, *n),
-                IRConstValue::Float(f) => enc.mov_imm64(X86Reg::RAX, f.to_bits() as i64),
+                IRConstValue::Float(f) => {
+                    // Load f64 bits into RAX, then move to XMM0
+                    enc.mov_imm64(X86Reg::RAX, f.to_bits() as i64);
+                    enc.movq_xmm0_rax();
+                }
                 IRConstValue::Bool(b) => {
                     if *b { enc.mov_imm64(X86Reg::RAX, 1); }
                     else { enc.xor_rr(X86Reg::RAX); }
@@ -522,9 +800,9 @@ fn compile_instruction(instr: &IRInstruction, func: &AllocatedFunction, enc: &mu
             }
         }
         IRInstruction::BinOp { op, left, right } => {
-            compile_instruction(left, func, enc);
+            compile_instruction(left, func, enc, saved_regs, stack_size);
             enc.push(X86Reg::RAX);
-            compile_instruction(right, func, enc);
+            compile_instruction(right, func, enc, saved_regs, stack_size);
             enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
             enc.pop(X86Reg::RAX);
             match op {
@@ -536,6 +814,10 @@ fn compile_instruction(instr: &IRInstruction, func: &AllocatedFunction, enc: &mu
                     enc.idiv_r(X86Reg::RCX);
                     enc.mov_rr(X86Reg::RAX, X86Reg::RDX);
                 }
+                IROp::Pow => {
+                    // RAX=base, RCX=exponent → call __pyb_pow
+                    enc.call_label("__pyb_pow");
+                }
                 IROp::Shl => { enc.rex_w(); enc.emit(&[0xD3, 0xE0]); }
                 IROp::Shr => { enc.rex_w(); enc.emit(&[0xD3, 0xF8]); }
                 IROp::And => { enc.rex_w(); enc.emit(&[0x21, 0xC8]); }
@@ -545,9 +827,9 @@ fn compile_instruction(instr: &IRInstruction, func: &AllocatedFunction, enc: &mu
             }
         }
         IRInstruction::Compare { op, left, right } => {
-            compile_instruction(left, func, enc);
+            compile_instruction(left, func, enc, saved_regs, stack_size);
             enc.push(X86Reg::RAX);
-            compile_instruction(right, func, enc);
+            compile_instruction(right, func, enc, saved_regs, stack_size);
             enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
             enc.pop(X86Reg::RAX);
             enc.cmp_rr(X86Reg::RAX, X86Reg::RCX);
@@ -567,19 +849,11 @@ fn compile_instruction(instr: &IRInstruction, func: &AllocatedFunction, enc: &mu
             enc.jcc(0x84, lbl); // JE
         }
         IRInstruction::Return => {
-            if func.stack_size > 0 && func.stack_size <= 127 {
-                enc.add_rsp(func.stack_size as u8);
-            }
-            enc.pop(X86Reg::RBX);
-            enc.ret();
+            emit_function_epilogue(saved_regs, stack_size, enc);
         }
         IRInstruction::ReturnVoid => {
             enc.xor_rr(X86Reg::RAX);
-            if func.stack_size > 0 && func.stack_size <= 127 {
-                enc.add_rsp(func.stack_size as u8);
-            }
-            enc.pop(X86Reg::RBX);
-            enc.ret();
+            emit_function_epilogue(saved_regs, stack_size, enc);
         }
         IRInstruction::Load(name) => {
             if let Some((_, reg)) = func.reg_map.iter().find(|(n, _)| n == name) {
@@ -595,7 +869,7 @@ fn compile_instruction(instr: &IRInstruction, func: &AllocatedFunction, enc: &mu
             // Push args into Windows ABI regs
             let abi = [X86Reg::RCX, X86Reg::RDX, X86Reg::R8, X86Reg::R9];
             for (i, arg) in args.iter().enumerate().take(4) {
-                compile_instruction(arg, func, enc);
+                compile_instruction(arg, func, enc, saved_regs, stack_size);
                 if i < abi.len() { enc.mov_rr(abi[i], X86Reg::RAX); }
             }
             enc.call_label(callee);
@@ -645,11 +919,35 @@ fn compile_instruction(instr: &IRInstruction, func: &AllocatedFunction, enc: &mu
             enc.call_label("__pyb_print_nl");
             enc.add_rsp(32);
         }
+        IRInstruction::PrintFloat => {
+            // XMM0 already has the float (from LoadConst::Float or variable load)
+            // If value was in RAX (from variable), convert to XMM0
+            enc.sub_rsp(32);
+            enc.call_label("__pyb_ftoa");
+            enc.add_rsp(32);
+        }
         IRInstruction::ExitProcess => {
             enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
             enc.call_iat(IAT_EXIT_PROCESS);
         }
 
+        IRInstruction::IterNext { target, end_label } => {
+            // For range() loops: RAX has current counter, compare with end
+            // The loop variable is the counter — load it, check if done
+            // This is called at loop top: if counter >= end, jump to end_label
+            // Load loop counter from register
+            if let Some((_, reg)) = func.reg_map.iter().find(|(n, _)| n == target) {
+                enc.mov_rr(X86Reg::RAX, *reg);
+            }
+            // RCX should hold the end value (set up by range() init)
+            // Compare RAX with RCX (end)
+            // For now, we rely on the range setup putting end in a specific register
+            // This is handled by the ForRange IR pattern
+        }
+        IRInstruction::Break | IRInstruction::Continue => {
+            // These should have been converted to Jump instructions by py_to_ir
+            // If we get here, it's a no-op
+        }
         _ => {}
     }
 }
