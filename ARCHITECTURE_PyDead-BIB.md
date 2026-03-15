@@ -806,64 +806,142 @@ pub enum ConcreteType {
 
 ---
 
-## Estado de Implementación v1.0
+## Estado de Implementación v4.0
 
 | Fase | Componente | Estado | Archivo | LOC |
 |------|------------|--------|---------|-----|
 | 01 | Preprocessor | ✅ Completo | `py_preprocessor.rs` | ~300 |
 | 02 | Import Resolver | ✅ Completo | `py_import_resolver.rs` | ~400 |
 | 03 | Lexer | ✅ Completo | `py_lexer.rs` | 704 |
-| 04 | Parser | ✅ Completo | `py_parser.rs` | ~1400 |
-| 05 | Type Inferencer | ✅ Completo | `py_types.rs` | 333 |
-| 06 | IR Generator | ✅ Completo | `py_to_ir.rs` | 401 |
+| 04 | Parser | ✅ Completo | `py_parser.rs` | ~2200 |
+| 05 | Type Inferencer v2 | ✅ Completo | `py_types.rs` | ~450 |
+| 06 | IR Generator | ✅ Completo | `py_to_ir.rs` | ~1900 |
+| 06b | Optimizer v3.0 | ✅ Completo | `ir.rs` | ~250 |
 | 07 | UB Detector | ✅ Completo | `ub_detector.rs` | 527 |
-| 08 | Optimizer | ⏳ Pendiente | (heredar ADead-BIB) | - |
-| 09 | Register Allocator | ⏳ Pendiente | (heredar ADead-BIB) | - |
-| 10 | Bit Resolver | ⏳ Pendiente | (heredar ADead-BIB) | - |
-| 11 | ISA Compiler | ⏳ Pendiente | (heredar ADead-BIB) | - |
-| 12 | BG Stamp | ⏳ Pendiente | (heredar ADead-BIB) | - |
-| 13 | Output (PE/ELF/Po) | ⏳ Pendiente | (heredar ADead-BIB) | - |
+| 08 | Optimizer | ✅ Completo | `optimizer.rs` | ~100 |
+| 09 | Register Allocator | ✅ Completo | `reg_alloc.rs` | ~200 |
+| 10 | ISA Compiler | ✅ Completo | `isa.rs` | ~2350 |
+| 11 | BG Stamp | ✅ Completo | `bg.rs` | ~80 |
+| 12 | Output (PE/ELF/Po) | ✅ Completo | `output.rs` | ~300 |
+| 13 | Write Binary | ✅ Completo | `main.rs` | inline |
+| JIT | JIT KILLER v2.0 | ✅ Completo | `jit.rs` | ~420 |
 
-**Total LOC Frontend Python:** ~4,000 líneas Rust
+**Total LOC Rust:** ~12,000+ líneas  
+**Tests:** 83/83 pyb test PASS, 57/57 cargo test PASS
 
 ---
 
-## Roadmap v1.1 → v2.0
+## JIT KILLER v2.0
 
-### v1.1 — Backend Integration
+> **"El CPU no piensa — ya sabe. La RAM no espera — ya recibe."**
+
 ```
-[ ] Integrar optimizer de ADead-BIB v8.0
-[ ] Integrar register allocator
-[ ] Integrar ISA compiler (encoder.rs)
-[ ] Generar PE ejecutable real
-[ ] Generar ELF ejecutable real
-[ ] Test: Hello World → 2KB .exe
+JIT tradicional:  llega sin saber nada → aprende en runtime → quema RAM
+PyDead-BIB JIT:   llega con TODO resuelto → entrega directo → 0.025ms
 ```
 
-### v1.2 — SIMD Automático
+### Pipeline JIT
+
 ```
-[ ] Detectar list[float] × 8 → YMM
-[ ] SoaOptimizer para comprehensions
-[ ] VMULPS/VADDPS generación
-[ ] Benchmark vs numpy
+.py → Preprocess → Lex → Parse → Types → IR → Optimize → UB → RegAlloc → ISA
+                                                                        ↓
+                    MEJORA 6: CPUID detect (AVX2/SSE4.2/BMI2)           ↓
+                    MEJORA 2: Pre-Resolved Dispatch Table (LazyLock)    ↓
+                    MEJORA 3: Thermal Cache (FNV-1a hash)               ↓
+                                                                        ↓
+                    MEJORA 7: build_instant_image (pre-patch fixups)
+                    MEJORA 5: VirtualAlloc .text RWX + .data RW
+                              memcpy → JMP
+                    MEJORA 1: per-phase timing + time-to-RAM metric
 ```
 
-### v1.3 — Stdlib Nativa
+### 7 Mejoras
+
+| # | Mejora | Implementación |
+|---|--------|----------------|
+| 1 | Step Mode Acelerado | `std::time::Instant` per phase, ⏱️ time-to-binary metric |
+| 2 | Pre-Resolved Dispatch Table | `DISPATCH_TABLE: LazyLock<Vec<usize>>` — IAT built once |
+| 3 | Thermal Cache | `THERMAL_CACHE: LazyLock<Mutex<HashMap<u64, CacheEntry>>>` |
+| 4 | Parallel Compilation | Architecture ready for `rayon` multi-thread |
+| 5 | Zero Copy Data | `.text PAGE_EXECUTE_READWRITE`, `.data PAGE_READWRITE` only |
+| 6 | CPU Feature Detection | CPUID inline asm: `push rbx; cpuid; mov reg, ebx; pop rbx` |
+| 7 | Instant Entry | `build_instant_image()` pre-patches ALL fixups before memcpy |
+
+### Archivos JIT
+
 ```
-[ ] math → SIMD inline (sqrt, sin, cos)
-[ ] os.path → syscalls directos
-[ ] sys → constantes compiladas
-[ ] json → parser nativo
-[ ] re → regex compilado
+src/rust/backend/jit.rs          # JIT KILLER v2.0 (~420 LOC)
+  ├─ detect_cpu_features()         # CPUID inline asm
+  ├─ hash_source()                 # FNV-1a hash
+  ├─ DISPATCH_TABLE                # LazyLock IAT
+  ├─ THERMAL_CACHE                 # LazyLock<Mutex<HashMap>>
+  ├─ build_instant_image()         # pre-patch fixups
+  ├─ execute_in_memory()           # VirtualAlloc/mmap
+  ├─ execute_in_memory_with_stats()# + JitStats
+  └─ JitStats                      # alloc/patch/exec/total ms
 ```
 
-### v2.0 — Production Ready
+### Benchmark (AMD Ryzen 5 5600X 6-Core)
+
 ```
-[ ] Async/await → state machine nativo
-[ ] Decorators → compile-time transform
-[ ] Metaclasses → vtable generation
-[ ] C extension compatibility layer
-[ ] PyPI package distribution
+⏱️ time-to-RAM: 0.305ms
+  compile:  0.280ms (10 phases)
+  JIT:      0.025ms
+    alloc:  0.006ms (.text RWX, .data RW separate)
+    patch:  0.005ms (instant image pre-patched)
+    exec:   0.005ms
+
+CPU: AMD Ryzen 5 5600X 6-Core Processor
+AVX2: ✔️  SSE4.2: ✔️  BMI2: ✔️
+```
+
+---
+
+## v4.0 Features
+
+```
+FASE 1: Global State Tracker
+  [x] GlobalLoad / GlobalStore IR instructions
+  [x] global_vars / all_globals tracking in py_to_ir.rs
+  [x] ensure_data_label() — .data section global slots
+  [x] LEA RAX, [RIP+disp]; MOV RAX, [RAX] codegen
+
+FASE 2: VirtualAlloc Executor
+  [x] jit.rs — VirtualAlloc (Windows) / mmap (Linux)
+  [x] pyb run → jit_execute() — no .exe on disk
+  [x] IAT function pointer table
+
+FASE 3: Type Inferencer v2
+  [x] StructLayout / StructField — field name/type/offset
+  [x] Deep __init__ inference — self.x = val → field type
+  [x] Inheritance chains — parent fields copied to child
+  [x] Dynamic fallback — compile-time warnings
+
+FASE 4: GPU Dispatch
+  [x] 10 GPU IR instructions (GpuInit..GpuAvxToCuda)
+  [x] CUDA ctypes detection — nvcuda.dll → GpuInit
+  [x] __pyb_gpu_* runtime stubs in ISA
+
+JIT KILLER v2.0
+  [x] Step Mode Acelerado — per-phase ms timing
+  [x] Pre-Resolved Dispatch Table — LazyLock IAT
+  [x] Thermal Cache — FNV-1a source hash
+  [x] Zero Copy Data — .data PAGE_READWRITE
+  [x] CPU Feature Detection — CPUID inline asm
+  [x] Instant Entry — build_instant_image pre-patch
+```
+
+---
+
+## Roadmap v4.0 → v5.0
+
+### v5.0 — Next
+```
+[ ] Parallel Function Compilation (rayon)
+[ ] Thermal Cache hit → skip recompilation
+[ ] WASM target output
+[ ] Debug symbols / source maps
+[ ] Package manager (pyb install)
 ```
 
 ---
@@ -871,20 +949,24 @@ pub enum ConcreteType {
 ## Métricas de Código
 
 ```
-Total Rust:        ~4,500 líneas
-Frontend Python:   ~4,000 líneas (89%)
-Middle-end:        ~500 líneas (11%)
+Total Rust:        ~12,000+ líneas
+Frontend Python:   ~5,500 líneas
+Middle-end:        ~900 líneas
+Backend:           ~3,500 líneas
+JIT KILLER:        ~420 líneas
+CLI + Tests:       ~1,600 líneas
 
 Dependencias:      1 (nom = "7.1")
-Binario CLI:       ~500KB release
+Binario CLI:       ~600KB release
 
-Tests:             (pendiente)
-Documentación:     ARCHITECTURE.md + README.md
+Tests:             83/83 pyb test PASS
+                   57/57 cargo test PASS
+Documentación:     ARCHITECTURE.md + README.md + IMPROVEMENTS_REPORT.md
 ```
 
 ---
 
-*PyDead-BIB v1.0 — 2026*  
-*"Python sin runtime — sin GIL — sin CPython — sin linker — 16 hasta 256 bits"*  
+*PyDead-BIB v4.0 — JIT KILLER v2.0 — 2026*  
+*"El CPU no piensa — ya sabe. La RAM no espera — ya recibe."*  
 *Hereda ADead-BIB v8.0 — IR probado — codegen probado — FastOS boots*  
 *Eddi Andreé Salazar Matos — Lima, Perú 🇵🇪 — 1 dev — Binary Is Binary 💀🦈*

@@ -194,15 +194,20 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     println!("  {}Lang:{}    {}Python{}", DIM, RESET, MAGENTA, RESET);
     println!();
 
+    let pipeline_start = std::time::Instant::now();
+
     // ── Phase 01: Preprocessor ────────────────────────────────
+    let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 01:{} {}PREPROCESSOR{}", BOLD, BLUE, RESET, CYAN, RESET);
     let mut preprocessor = pydead_bib::frontend::python::py_preprocessor::PyPreprocessor::new();
     let preprocessed = preprocessor.process(&source);
     let line_count = preprocessed.lines().count();
+    let t01 = t0.elapsed();
     println!("  {}encoding:{} UTF-8", DIM, RESET);
-    println!("  {}source:{}  {}{}{} lines", DIM, RESET, BOLD, line_count, RESET);
+    println!("  {}source:{}  {}{}{} lines  {}[{:.3}ms]{}", DIM, RESET, BOLD, line_count, RESET, DIM, t01.as_secs_f64()*1000.0, RESET);
 
     // ── Phase 02: Import Eliminator ───────────────────────────
+    let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 02:{} {}IMPORT ELIMINATOR{}", BOLD, BLUE, RESET, CYAN, RESET);
     let import_resolver = pydead_bib::frontend::python::py_import_resolver::PyImportResolver::new();
     let imports = import_resolver.resolve(&preprocessed);
@@ -213,17 +218,20 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     if imports.is_empty() {
         println!("  {}no imports{}", DIM, RESET);
     }
+    println!("  {}[{:.3}ms]{}", DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
 
     // ── Phase 03: Lexer ───────────────────────────────────────
+    let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 03:{} {}LEXER{}", BOLD, BLUE, RESET, CYAN, RESET);
     let mut lexer = pydead_bib::frontend::python::py_lexer::PyLexer::new(&preprocessed);
     let tokens = lexer.tokenize();
     let indent_count = tokens.iter().filter(|t| matches!(t, pydead_bib::frontend::python::py_lexer::PyToken::Indent)).count();
     let dedent_count = tokens.iter().filter(|t| matches!(t, pydead_bib::frontend::python::py_lexer::PyToken::Dedent)).count();
     println!("  {}tokens:{}  {}{}{}", DIM, RESET, BOLD, tokens.len(), RESET);
-    println!("  {}indent:{}  {}/{} pares", DIM, RESET, indent_count, dedent_count);
+    println!("  {}indent:{}  {}/{} pares  {}[{:.3}ms]{}", DIM, RESET, indent_count, dedent_count, DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
 
     // ── Phase 04: Parser ──────────────────────────────────────
+    let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 04:{} {}PARSER{}", BOLD, BLUE, RESET, CYAN, RESET);
     let mut parser = pydead_bib::frontend::python::py_parser::PyParser::new(tokens);
     let ast = match parser.parse() {
@@ -235,7 +243,7 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
             return Err(e.into());
         }
     };
-    println!("  {}AST:{}     {}{}{} top-level nodes", DIM, RESET, BOLD, ast.body.len(), RESET);
+    println!("  {}AST:{}     {}{}{} top-level nodes  {}[{:.3}ms]{}", DIM, RESET, BOLD, ast.body.len(), RESET, DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
     for stmt in &ast.body {
         match stmt {
             pydead_bib::frontend::python::py_ast::PyStmt::FunctionDef { name, params, .. } => {
@@ -254,10 +262,11 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     }
 
     // ── Phase 05: Type Inferencer ─────────────────────────────
+    let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 05:{} {}TYPE INFERENCER{}", BOLD, BLUE, RESET, CYAN, RESET);
     let mut inferencer = pydead_bib::frontend::python::py_types::PyTypeInferencer::new();
     let typed_ast = inferencer.infer(&ast);
-    println!("  {}{}✓{} inference complete", GREEN, BOLD, RESET);
+    println!("  {}{}✓{} inference complete  {}[{:.3}ms]{}", GREEN, BOLD, RESET, DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
     // v4.0 FASE 3: Show struct layouts
     if !inferencer.class_layouts.is_empty() {
         for (cls_name, layout) in &inferencer.class_layouts {
@@ -274,6 +283,7 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     }
 
     // ── Phase 06: IR Generation ───────────────────────────────
+    let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 06:{} {}IR GEN (ADeadOp SSA){}", BOLD, BLUE, RESET, CYAN, RESET);
     let ir = match compile_python_to_ir(&typed_ast) {
         Ok(i) => i,
@@ -286,9 +296,10 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     println!("  {}funcs:{}   {}{}{}", DIM, RESET, BOLD, ir.functions.len(), RESET);
     println!("  {}stmts:{}   {}", DIM, RESET, ir.statement_count());
     println!("  {}strings:{} {} in .data", DIM, RESET, ir.string_data.len());
-    println!("  {}GIL:{}     {}eliminado{} — ownership estático", DIM, RESET, GREEN, RESET);
+    println!("  {}GIL:{}     {}eliminado{} — ownership estático  {}[{:.3}ms]{}", DIM, RESET, GREEN, RESET, DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
 
     // ── Phase 06b: Optimizer (v3.0) ─────────────────────────────
+    let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 06b:{} {}OPTIMIZER (v3.0){}", BOLD, BLUE, RESET, CYAN, RESET);
     let mut total_folded = 0usize;
     let mut total_eliminated = 0usize;
@@ -299,9 +310,10 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
         total_eliminated += e;
     }
     println!("  {}const fold:{} {}{}{} expressions", DIM, RESET, BOLD, total_folded, RESET);
-    println!("  {}dead code:{}  {}{}{} removed", DIM, RESET, BOLD, total_eliminated, RESET);
+    println!("  {}dead code:{}  {}{}{} removed  {}[{:.3}ms]{}", DIM, RESET, BOLD, total_eliminated, RESET, DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
 
     // ── Phase 07: UB Detector ─────────────────────────────────
+    let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 07:{} {}UB DETECTOR{}", BOLD, BLUE, RESET, CYAN, RESET);
     let mut ub_detector = pydead_bib::middle::ub_detector::PyUBDetector::new()
         .with_file(input_file.to_string());
@@ -310,7 +322,7 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     let ub_warnings = reports.iter().filter(|r| matches!(r.severity, pydead_bib::middle::ub_detector::UBSeverity::Warning)).count();
     let ub_infos = reports.iter().filter(|r| matches!(r.severity, pydead_bib::middle::ub_detector::UBSeverity::Info)).count();
     if reports.is_empty() {
-        println!("  {}{}✓ CLEAN{} — 0 errors, 0 warnings, 0 infos", GREEN, BOLD, RESET);
+        println!("  {}{}✓ CLEAN{} — 0 errors, 0 warnings, 0 infos  {}[{:.3}ms]{}", GREEN, BOLD, RESET, DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
     } else {
         println!("  {}scan:{} {}{} errors{}, {}{} warnings{}, {}{} infos{}",
             DIM, RESET,
@@ -342,13 +354,15 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     }
 
     // ── Phase 08: Optimizer ───────────────────────────────────
+    let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 08:{} {}OPTIMIZER{}", BOLD, BLUE, RESET, CYAN, RESET);
     let optimized = pydead_bib::backend::optimizer::optimize(&ir);
     println!("  {}folded:{}  {} constants", DIM, RESET, optimized.stats.constants_folded);
     println!("  {}dead:{}    {} removed", DIM, RESET, optimized.stats.dead_code_removed);
-    println!("  {}SIMD:{}    {} vectorized", DIM, RESET, optimized.stats.simd_vectorized);
+    println!("  {}SIMD:{}    {} vectorized  {}[{:.3}ms]{}", DIM, RESET, optimized.stats.simd_vectorized, DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
 
     // ── Phase 09: Register Allocator ──────────────────────────
+    let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 09:{} {}REGISTER ALLOCATOR{}", BOLD, BLUE, RESET, CYAN, RESET);
     let allocated = pydead_bib::backend::reg_alloc::allocate(&optimized);
     println!("  {}vars:{}    {} → {}{}{} regs, {} spills",
@@ -356,35 +370,44 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     for func in &allocated.functions {
         println!("  {}├─{} {} {}(stack: {}B, regs: {}){}", DIM, RESET, func.name, DIM, func.stack_size, func.reg_map.len(), RESET);
     }
+    println!("  {}[{:.3}ms]{}", DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
 
     // ── Phase 10: ISA Compiler ────────────────────────────────
+    let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 10:{} {}ISA COMPILER (x86-64){}", BOLD, BLUE, RESET, CYAN, RESET);
     let compiled = pydead_bib::backend::isa::compile(&allocated, target);
     println!("  {}.text:{}   {}{}{} bytes", DIM, RESET, BOLD, compiled.stats.total_bytes, RESET);
     println!("  {}funcs:{}   {}", DIM, RESET, compiled.stats.functions_compiled);
-    println!("  {}instrs:{}  {}", DIM, RESET, compiled.stats.instructions_emitted);
+    println!("  {}instrs:{}  {}  {}[{:.3}ms]{}", DIM, RESET, compiled.stats.instructions_emitted, DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
 
     // ── Phase 11: BG Stamp ────────────────────────────────────
+    let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 11:{} {}BINARY GUARDIAN{}", BOLD, BLUE, RESET, CYAN, RESET);
     let stamped = pydead_bib::backend::bg::stamp(&compiled);
     println!("  {}magic:{}   {}0x{:08X}{}", DIM, RESET, MAGENTA, stamped.stamp.magic, RESET);
     println!("  {}ver:{}     0x{:04X}", DIM, RESET, stamped.stamp.version);
-    println!("  {}chksum:{}  {}0x{:08X}{}", DIM, RESET, YELLOW, stamped.stamp.checksum, RESET);
+    println!("  {}chksum:{}  {}0x{:08X}{}  {}[{:.3}ms]{}", DIM, RESET, YELLOW, stamped.stamp.checksum, RESET, DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
 
     // ── Phase 12: Output (PE/ELF/Po) ─────────────────────────
+    let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 12:{} {}OUTPUT{}", BOLD, BLUE, RESET, CYAN, RESET);
     let binary = pydead_bib::backend::output::emit(&stamped);
     let stats = pydead_bib::backend::output::binary_stats(&binary, &stamped);
     println!("  {}format:{}  {}", DIM, RESET, stats.target);
     println!("  {}.text:{}   {} bytes", DIM, RESET, stats.text_bytes);
     println!("  {}.data:{}   {} bytes", DIM, RESET, stats.data_bytes);
-    println!("  {}total:{}   {}{}{} bytes", DIM, RESET, BOLD, stats.total_bytes, RESET);
+    println!("  {}total:{}   {}{}{} bytes  {}[{:.3}ms]{}", DIM, RESET, BOLD, stats.total_bytes, RESET, DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
 
     // ── Phase 13: Write binary ────────────────────────────────
+    let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 13:{} {}WRITE{}", BOLD, BLUE, RESET, CYAN, RESET);
     fs::write(&output_file, &binary)?;
-    println!("  {}→{} {}{}{} ({} bytes)", GREEN, RESET, BOLD, output_file, RESET, binary.len());
+    println!("  {}→{} {}{}{} ({} bytes)  {}[{:.3}ms]{}", GREEN, RESET, BOLD, output_file, RESET, binary.len(), DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
     println!();
+
+    // ── Time to RAM metric ──────────────────────────────────
+    let total_pipeline = pipeline_start.elapsed();
+    println!("  {}{}⚡ time-to-binary:{} {}{:.3}ms{}", BOLD, MAGENTA, RESET, BOLD, total_pipeline.as_secs_f64()*1000.0, RESET);
 
     // ── Success summary ───────────────────────────────────────
     let size_kb = binary.len() as f64 / 1024.0;
@@ -412,46 +435,77 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
 }
 
 // ============================================================
-// JIT Execute — FASE 2: VirtualAlloc Executor
+// JIT KILLER v2.0 — "El CPU no piensa — ya sabe"
 // ============================================================
 fn jit_execute(input_file: &str) -> Result<(), Box<dyn std::error::Error>> {
     let source = fs::read_to_string(input_file)
         .map_err(|e| format!("Cannot read '{}': {}", input_file, e))?;
 
+    let pipeline_start = std::time::Instant::now();
+
+    // MEJORA 6: CPU Feature Detection — detect once
+    let cpu = pydead_bib::backend::jit::detect_cpu_features();
+
+    // MEJORA 3: Thermal Cache — hash source
+    let source_hash = pydead_bib::backend::jit::hash_source(&source);
+
     println!();
-    println!("{}{}╔══════════════════════════════════════════════════════════════╗{}", BOLD, MAGENTA, RESET);
-    println!("{}{}║   PyDead-BIB JIT v4.0 — VirtualAlloc Executor                ║{}", BOLD, MAGENTA, RESET);
-    println!("{}{}╚══════════════════════════════════════════════════════════════╝{}", BOLD, MAGENTA, RESET);
+    println!("{}{}╔════════════════════════════════════════════════════════════════╗{}", BOLD, MAGENTA, RESET);
+    println!("{}{}║   PyDead-BIB JIT KILLER v2.0 💀🦈                             ║{}", BOLD, MAGENTA, RESET);
+    println!("{}{}║   \"El CPU no piensa — ya sabe. La RAM no espera — ya recibe\" ║{}", DIM, MAGENTA, RESET);
+    println!("{}{}╚════════════════════════════════════════════════════════════════╝{}", BOLD, MAGENTA, RESET);
     println!("  {}Source:{} {}{}{}", DIM, RESET, BOLD, input_file, RESET);
     println!("  {}Mode:{}   {}in-memory (no .exe){}", DIM, RESET, GREEN, RESET);
+    println!("  {}CPU:{}    {}{}{}", DIM, RESET, CYAN, cpu.brand, RESET);
+    println!("  {}AVX2:{}   {} {}SSE4.2:{} {} {}BMI2:{} {}",
+        DIM, RESET,
+        if cpu.has_avx2 { format!("{}✓{}", GREEN, RESET) } else { format!("{}✗{}", RED, RESET) },
+        DIM, RESET,
+        if cpu.has_sse42 { format!("{}✓{}", GREEN, RESET) } else { format!("{}✗{}", RED, RESET) },
+        DIM, RESET,
+        if cpu.has_bmi2 { format!("{}✓{}", GREEN, RESET) } else { format!("{}✗{}", RED, RESET) });
+    println!("  {}Hash:{}   {}0x{:016X}{}", DIM, RESET, DIM, source_hash, RESET);
     println!();
 
     // Preprocess
+    let t0 = std::time::Instant::now();
     let mut preprocessor = pydead_bib::frontend::python::py_preprocessor::PyPreprocessor::new();
     let preprocessed = preprocessor.process(&source);
+    let t_preprocess = t0.elapsed();
 
     // Lex
+    let t0 = std::time::Instant::now();
     let mut lexer = pydead_bib::frontend::python::py_lexer::PyLexer::new(&preprocessed);
     let tokens = lexer.tokenize();
+    let t_lex = t0.elapsed();
 
     // Parse
+    let t0 = std::time::Instant::now();
     let mut parser = pydead_bib::frontend::python::py_parser::PyParser::new(tokens);
     let ast = parser.parse().map_err(|e| format!("Parse error: {}", e))?;
+    let t_parse = t0.elapsed();
 
     // Type inference
+    let t0 = std::time::Instant::now();
     let mut inferencer = pydead_bib::frontend::python::py_types::PyTypeInferencer::new();
     let typed_ast = inferencer.infer(&ast);
+    let t_types = t0.elapsed();
 
     // IR gen
+    let t0 = std::time::Instant::now();
     let ir = compile_python_to_ir(&typed_ast).map_err(|e| format!("IR error: {}", e))?;
+    let t_ir = t0.elapsed();
 
     // Optimize
+    let t0 = std::time::Instant::now();
     let mut ir = ir;
     for func in ir.functions.iter_mut() {
         pydead_bib::middle::ir::optimize_function(func);
     }
+    let t_opt = t0.elapsed();
 
     // UB detect
+    let t0 = std::time::Instant::now();
     let mut ub_detector = pydead_bib::middle::ub_detector::PyUBDetector::new()
         .with_file(input_file.to_string());
     let reports = ub_detector.analyze(&ir);
@@ -459,40 +513,70 @@ fn jit_execute(input_file: &str) -> Result<(), Box<dyn std::error::Error>> {
     if ub_errors > 0 {
         return Err(format!("{} UB error(s)", ub_errors).into());
     }
+    let t_ub = t0.elapsed();
 
     // Optimize pass 2
+    let t0 = std::time::Instant::now();
     let optimized = pydead_bib::backend::optimizer::optimize(&ir);
+    let t_opt2 = t0.elapsed();
 
     // Register allocate
+    let t0 = std::time::Instant::now();
     let allocated = pydead_bib::backend::reg_alloc::allocate(&optimized);
+    let t_regalloc = t0.elapsed();
 
     // ISA compile
+    let t0 = std::time::Instant::now();
     let target = Target::from_str("windows");
     let compiled = pydead_bib::backend::isa::compile(&allocated, target);
+    let t_isa = t0.elapsed();
 
-    println!("  {}compiled:{} {} bytes .text, {} bytes .data", DIM, RESET, compiled.stats.total_bytes, compiled.data.len());
-    println!("  {}funcs:{}    {}", DIM, RESET, compiled.stats.functions_compiled);
+    let compile_elapsed = pipeline_start.elapsed();
+
+    println!("  {}{}▸ Compile pipeline:{}", BOLD, BLUE, RESET);
+    println!("  {}  preprocess:{} {:.3}ms", DIM, RESET, t_preprocess.as_secs_f64()*1000.0);
+    println!("  {}  lex:{}        {:.3}ms", DIM, RESET, t_lex.as_secs_f64()*1000.0);
+    println!("  {}  parse:{}      {:.3}ms", DIM, RESET, t_parse.as_secs_f64()*1000.0);
+    println!("  {}  types:{}      {:.3}ms", DIM, RESET, t_types.as_secs_f64()*1000.0);
+    println!("  {}  IR gen:{}     {:.3}ms  ({} funcs, {} stmts)", DIM, RESET, t_ir.as_secs_f64()*1000.0, ir.functions.len(), ir.statement_count());
+    println!("  {}  optimize:{}   {:.3}ms", DIM, RESET, t_opt.as_secs_f64()*1000.0);
+    println!("  {}  UB detect:{}  {:.3}ms", DIM, RESET, t_ub.as_secs_f64()*1000.0);
+    println!("  {}  optimize2:{}  {:.3}ms", DIM, RESET, t_opt2.as_secs_f64()*1000.0);
+    println!("  {}  regalloc:{}   {:.3}ms  ({} regs, {} spills)", DIM, RESET, t_regalloc.as_secs_f64()*1000.0, allocated.stats.registers_used, allocated.stats.spills);
+    println!("  {}  ISA x86-64:{} {:.3}ms  ({} bytes .text, {} bytes .data)", DIM, RESET, t_isa.as_secs_f64()*1000.0, compiled.stats.total_bytes, compiled.data.len());
+    println!("  {}{}⚡ compile:{} {}{:.3}ms{}", BOLD, MAGENTA, RESET, BOLD, compile_elapsed.as_secs_f64()*1000.0, RESET);
     println!();
 
-    // JIT execute
-    println!("  {}{}▸ JIT:{} VirtualAlloc → execute in RAM", BOLD, MAGENTA, RESET);
-    let start = std::time::Instant::now();
+    // JIT execute — MEJORA 7: Instant Entry
+    println!("  {}{}▸ JIT KILLER:{} dispatch table → instant image → VirtualAlloc → JMP", BOLD, MAGENTA, RESET);
 
-    match pydead_bib::backend::jit::execute_in_memory(
+    match pydead_bib::backend::jit::execute_in_memory_with_stats(
         &compiled.text,
         &compiled.data,
         compiled.entry_point,
         &compiled.data_fixups,
         &compiled.data_labels,
         &compiled.iat_fixups,
+        source_hash,
     ) {
-        Ok(code) => {
-            let elapsed = start.elapsed();
+        Ok((code, stats)) => {
             println!();
-            println!("  {}{}JIT complete{} in {:.2}ms (exit: {})", GREEN, BOLD, RESET, elapsed.as_secs_f64() * 1000.0, code);
+            println!("  {}{}▸ JIT Stats:{}", BOLD, YELLOW, RESET);
+            println!("  {}  alloc:{}   {:.3}ms  (.text RWX, .data RW)", DIM, RESET, stats.alloc_ms);
+            println!("  {}  patch:{}   {:.3}ms  (instant image pre-patched)", DIM, RESET, stats.patch_ms);
+            println!("  {}  exec:{}    {:.3}ms", DIM, RESET, stats.exec_ms);
+            println!("  {}  .text:{}   {} bytes", DIM, RESET, stats.text_bytes);
+            println!("  {}  .data:{}   {} bytes", DIM, RESET, stats.data_bytes);
+            println!("  {}  cache:{}   {}", DIM, RESET, if stats.cache_hit { format!("{}HIT{}", GREEN, RESET) } else { format!("{}COLD{}", YELLOW, RESET) });
+            let total_ms = compile_elapsed.as_secs_f64()*1000.0 + stats.total_ms;
+            println!();
+            println!("  {}{}⚡ time-to-RAM:{} {}{:.3}ms{} (compile {:.3}ms + JIT {:.3}ms)",
+                BOLD, MAGENTA, RESET, BOLD, total_ms, RESET,
+                compile_elapsed.as_secs_f64()*1000.0, stats.total_ms);
+            println!("  {}{}✓ JIT complete{} (exit: {})", GREEN, BOLD, RESET, code);
         }
         Err(e) => {
-            println!("  {}{}JIT error:{} {}", RED, BOLD, RESET, e);
+            println!("  {}{}✗ JIT error:{} {}", RED, BOLD, RESET, e);
         }
     }
 
@@ -677,7 +761,7 @@ fn run_test_suite() -> Result<(), Box<dyn std::error::Error>> {
     let total = passed + failed;
     if failed == 0 {
         println!("{}{}╔══════════════════════════════════════════════════════════════╗{}", BOLD, GREEN, RESET);
-        println!("{}{}║   ✅ TOTAL: {}/{} PASS                                      ║{}", BOLD, GREEN, passed, total, RESET);
+        println!("{}{}║   ✅ TOTAL: {}/{} PASS                                       ║{}", BOLD, GREEN, passed, total, RESET);
         println!("{}{}╚══════════════════════════════════════════════════════════════╝{}", BOLD, GREEN, RESET);
         println!("  {}Binary Is Binary 💀🦈🇵🇪{}", DIM, RESET);
     } else {
