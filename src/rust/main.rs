@@ -684,6 +684,11 @@ fn run_test_suite() -> Result<(), Box<dyn std::error::Error>> {
         ("tests/test_inheritance_v2.py", "Inherit v2"),
         // v4.0 — FASE 4: GPU Dispatch
         ("tests/test_gpu_dispatch.py", "GPU Dispatch"),
+        // v4.0 — Vulkan/SPIR-V Dispatch
+        ("tests/test_vulkan_dispatch.py", "Vulkan Dispatch"),
+        // v4.0 — Metal_Dead GPU + Benchmark
+        ("Metal_Dead/integrations/gpu_vulkan.py", "MD Vulkan GPU"),
+        ("Metal_Dead/integrations/metal_dead_benchmark.py", "MD Benchmark"),
     ];
 
     let mut passed = 0;

@@ -2338,6 +2338,74 @@ fn compile_instruction(instr: &IRInstruction, func: &AllocatedFunction, enc: &mu
             enc.add_rsp(32);
         }
 
+        // v4.0 — Vulkan/SPIR-V Dispatch
+        // All Vulkan instructions route through vulkan-1.dll runtime stubs
+        IRInstruction::VkInit => {
+            enc.mov_imm64(X86Reg::RCX, 0);
+            enc.sub_rsp(32);
+            enc.call_label("__pyb_vk_init");
+            enc.add_rsp(32);
+        }
+        IRInstruction::VkDeviceGet => {
+            enc.mov_imm64(X86Reg::RCX, 0);
+            enc.sub_rsp(32);
+            enc.call_label("__pyb_vk_device_get");
+            enc.add_rsp(32);
+        }
+        IRInstruction::VkDeviceCreate => {
+            enc.sub_rsp(32);
+            enc.call_label("__pyb_vk_device_create");
+            enc.add_rsp(32);
+        }
+        IRInstruction::VkBufferCreate { size } => {
+            compile_instruction(size, func, enc, saved_regs, stack_size);
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("__pyb_vk_buffer_create");
+            enc.add_rsp(32);
+        }
+        IRInstruction::VkBufferWrite { dst: _, src: _, size } => {
+            compile_instruction(size, func, enc, saved_regs, stack_size);
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("__pyb_vk_buffer_write");
+            enc.add_rsp(32);
+        }
+        IRInstruction::VkBufferRead { dst: _, src: _, size } => {
+            compile_instruction(size, func, enc, saved_regs, stack_size);
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("__pyb_vk_buffer_read");
+            enc.add_rsp(32);
+        }
+        IRInstruction::VkShaderLoad { spirv_path: _ } => {
+            enc.sub_rsp(32);
+            enc.call_label("__pyb_vk_shader_load");
+            enc.add_rsp(32);
+        }
+        IRInstruction::VkDispatch { shader: _, x, y, z } => {
+            compile_instruction(x, func, enc, saved_regs, stack_size);
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            compile_instruction(y, func, enc, saved_regs, stack_size);
+            enc.mov_rr(X86Reg::RDX, X86Reg::RAX);
+            compile_instruction(z, func, enc, saved_regs, stack_size);
+            enc.mov_rr(X86Reg::R8, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("__pyb_vk_dispatch");
+            enc.add_rsp(32);
+        }
+        IRInstruction::VkBufferFree { ptr: _ } => {
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("__pyb_vk_buffer_free");
+            enc.add_rsp(32);
+        }
+        IRInstruction::VkDestroy => {
+            enc.sub_rsp(32);
+            enc.call_label("__pyb_vk_destroy");
+            enc.add_rsp(32);
+        }
+
         _ => {}
     }
 }

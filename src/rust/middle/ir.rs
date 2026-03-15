@@ -185,6 +185,18 @@ pub enum IRInstruction {
     GpuCtxDestroy,                                      // cuCtxDestroy(ctx)
     GpuAvxToCuda { avx_label: String, gpu_ptr: String, count: Box<IRInstruction> }, // AVX2→CUDA handoff
 
+    // v4.0 — Vulkan/SPIR-V Dispatch
+    VkInit,                                             // vkCreateInstance
+    VkDeviceGet,                                        // vkEnumeratePhysicalDevices
+    VkDeviceCreate,                                     // vkCreateDevice + queue
+    VkBufferCreate { size: Box<IRInstruction> },        // vkCreateBuffer + vkAllocateMemory
+    VkBufferWrite { dst: String, src: String, size: Box<IRInstruction> },  // vkMapMemory + memcpy
+    VkBufferRead { dst: String, src: String, size: Box<IRInstruction> },   // vkMapMemory read back
+    VkShaderLoad { spirv_path: String },                // vkCreateShaderModule from SPIR-V
+    VkDispatch { shader: String, x: Box<IRInstruction>, y: Box<IRInstruction>, z: Box<IRInstruction> }, // vkCmdDispatch
+    VkBufferFree { ptr: String },                       // vkFreeMemory + vkDestroyBuffer
+    VkDestroy,                                          // vkDestroyDevice + vkDestroyInstance
+
     // No-op
     Nop,
 }

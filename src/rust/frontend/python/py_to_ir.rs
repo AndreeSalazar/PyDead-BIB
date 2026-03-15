@@ -1291,10 +1291,13 @@ impl PyToIR {
                     }
                     // ── ctypes module ─────────────────────────
                     "ctypes.CDLL" if !args.is_empty() => {
-                        // v4.0 FASE 4: Detect nvcuda.dll → GPU dispatch
+                        // v4.0: Detect GPU DLLs → dispatch
                         if let PyExpr::StringLiteral(path_str) = &args[0] {
                             if path_str.contains("nvcuda") || path_str.contains("cuda") {
                                 return IRInstruction::GpuInit;
+                            }
+                            if path_str.contains("vulkan") {
+                                return IRInstruction::VkInit;
                             }
                         }
                         let path = self.convert_expr_to_instr(&args[0], program);
@@ -1302,6 +1305,53 @@ impl PyToIR {
                             func: "__pyb_dll_load".to_string(),
                             args: vec![path],
                         };
+                    }
+                    "vk.vkCreateInstance" | "vulkan.vkCreateInstance" => {
+                        return IRInstruction::VkInit;
+                    }
+                    "vk.vkEnumeratePhysicalDevices" | "vulkan.vkEnumeratePhysicalDevices" => {
+                        return IRInstruction::VkDeviceGet;
+                    }
+                    "vk.vkCreateDevice" | "vulkan.vkCreateDevice" => {
+                        return IRInstruction::VkDeviceCreate;
+                    }
+                    "vk.vkCreateBuffer" | "vulkan.vkCreateBuffer" if !args.is_empty() => {
+                        let size = self.convert_expr_to_instr(&args[0], program);
+                        return IRInstruction::VkBufferCreate { size: Box::new(size) };
+                    }
+                    "vk.vkMapMemory" | "vulkan.vkMapMemory" => {
+                        let size = if args.len() >= 3 {
+                            self.convert_expr_to_instr(&args[2], program)
+                        } else {
+                            IRInstruction::LoadConst(IRConstValue::Int(0))
+                        };
+                        return IRInstruction::VkBufferWrite {
+                            dst: "vk_buf".to_string(),
+                            src: "host_ptr".to_string(),
+                            size: Box::new(size),
+                        };
+                    }
+                    "vk.vkCreateShaderModule" | "vulkan.vkCreateShaderModule" => {
+                        let path = if !args.is_empty() {
+                            if let PyExpr::StringLiteral(s) = &args[0] { s.clone() } else { "shader.spv".to_string() }
+                        } else { "shader.spv".to_string() };
+                        return IRInstruction::VkShaderLoad { spirv_path: path };
+                    }
+                    "vk.vkCmdDispatch" | "vulkan.vkCmdDispatch" => {
+                        let x = if args.len() > 0 { self.convert_expr_to_instr(&args[0], program) } else { IRInstruction::LoadConst(IRConstValue::Int(1)) };
+                        let y = if args.len() > 1 { self.convert_expr_to_instr(&args[1], program) } else { IRInstruction::LoadConst(IRConstValue::Int(1)) };
+                        let z = if args.len() > 2 { self.convert_expr_to_instr(&args[2], program) } else { IRInstruction::LoadConst(IRConstValue::Int(1)) };
+                        return IRInstruction::VkDispatch {
+                            shader: "compute".to_string(),
+                            x: Box::new(x), y: Box::new(y), z: Box::new(z),
+                        };
+                    }
+                    "vk.vkFreeMemory" | "vulkan.vkFreeMemory" => {
+                        return IRInstruction::VkBufferFree { ptr: "vk_buf".to_string() };
+                    }
+                    "vk.vkDestroyDevice" | "vulkan.vkDestroyDevice" |
+                    "vk.vkDestroyInstance" | "vulkan.vkDestroyInstance" => {
+                        return IRInstruction::VkDestroy;
                     }
                     // v4.0 FASE 4: GPU dispatch functions
                     "cuda.cuInit" | "cu.cuInit" => {
