@@ -75,6 +75,8 @@ pub struct PyToIR {
     class_fields: std::collections::HashMap<String, Vec<String>>, // class_name → ordered field names
     class_vars: std::collections::HashMap<String, String>, // var_name → class_name
     class_names: std::collections::HashSet<String>, // known class names
+    global_vars: std::collections::HashSet<String>, // variables declared 'global' in current function
+    all_globals: std::collections::HashSet<String>, // all global variables across all functions
 }
 
 impl PyToIR {
@@ -89,6 +91,8 @@ impl PyToIR {
             class_fields: std::collections::HashMap::new(),
             class_vars: std::collections::HashMap::new(),
             class_names: std::collections::HashSet::new(),
+            global_vars: std::collections::HashSet::new(),
+            all_globals: std::collections::HashSet::new(),
         }
     }
 
@@ -110,6 +114,17 @@ impl PyToIR {
             }
         }
 
+        // Pre-scan top-level assigns → register as all_globals so functions can access them
+        for stmt in &toplevel_stmts {
+            if let PyStmt::Assign { targets, .. } = stmt {
+                for t in targets {
+                    if let PyExpr::Name(name) = t {
+                        self.all_globals.insert(name.clone());
+                    }
+                }
+            }
+        }
+
         // Second pass: generate __main__ for top-level expressions
         if !toplevel_stmts.is_empty() {
             let mut main_func = IRFunction::new("__main__".to_string(), vec![], IRType::Void);
@@ -118,6 +133,15 @@ impl PyToIR {
             }
             main_func.body.push(IRInstruction::ReturnVoid);
             program.functions.push(main_func);
+        }
+
+        // Populate program.globals from all_globals
+        for gname in &self.all_globals {
+            program.globals.push(IRGlobal {
+                name: gname.clone(),
+                ir_type: IRType::I64,
+                init_value: Some(IRConstant::Int(0)),
+            });
         }
 
         Ok(program)
@@ -139,9 +163,26 @@ impl PyToIR {
 
                 let mut func = IRFunction::new(name.clone(), ir_params, ret_type);
 
+                // Save and reset per-function global_vars scope
+                let saved_globals = self.global_vars.clone();
+                self.global_vars.clear();
+
+                // Pre-scan for 'global' declarations in this function
+                for s in body {
+                    if let PyStmt::Global(names) = s {
+                        for gn in names {
+                            self.global_vars.insert(gn.clone());
+                            self.all_globals.insert(gn.clone());
+                        }
+                    }
+                }
+
                 for s in body {
                     self.convert_body_stmt(s, &mut func, program)?;
                 }
+
+                // Restore outer scope
+                self.global_vars = saved_globals;
 
                 program.functions.push(func);
             }
@@ -404,12 +445,18 @@ impl PyToIR {
                             let label = self.add_string(s, program);
                             self.string_vars.insert(name.clone(), label);
                         }
-                        func.body.push(IRInstruction::VarDecl {
-                            name: name.clone(),
-                            ir_type: self.infer_expr_type(value),
-                        });
-                        func.body.push(val_instr.clone());
-                        func.body.push(IRInstruction::Store(name.clone()));
+                        if self.global_vars.contains(name) || self.all_globals.contains(name) {
+                            // Global variable → use GlobalStore (no VarDecl needed)
+                            func.body.push(val_instr.clone());
+                            func.body.push(IRInstruction::GlobalStore(name.clone()));
+                        } else {
+                            func.body.push(IRInstruction::VarDecl {
+                                name: name.clone(),
+                                ir_type: self.infer_expr_type(value),
+                            });
+                            func.body.push(val_instr.clone());
+                            func.body.push(IRInstruction::Store(name.clone()));
+                        }
                     }
                 }
             }
@@ -733,16 +780,33 @@ impl PyToIR {
             PyStmt::AugAssign { target, op, value } => {
                 if let PyExpr::Name(name) = target {
                     let val_instr = self.convert_expr_to_instr(value, program);
-                    func.body.push(IRInstruction::VarDecl {
-                        name: name.clone(),
-                        ir_type: self.infer_expr_type(value),
-                    });
-                    func.body.push(IRInstruction::BinOp {
-                        op: self.convert_binop(op),
-                        left: Box::new(IRInstruction::Load(name.clone())),
-                        right: Box::new(val_instr),
-                    });
-                    func.body.push(IRInstruction::Store(name.clone()));
+                    if self.global_vars.contains(name) || self.all_globals.contains(name) {
+                        // Global variable → use GlobalLoad/GlobalStore
+                        func.body.push(IRInstruction::BinOp {
+                            op: self.convert_binop(op),
+                            left: Box::new(IRInstruction::GlobalLoad(name.clone())),
+                            right: Box::new(val_instr),
+                        });
+                        func.body.push(IRInstruction::GlobalStore(name.clone()));
+                    } else {
+                        func.body.push(IRInstruction::VarDecl {
+                            name: name.clone(),
+                            ir_type: self.infer_expr_type(value),
+                        });
+                        func.body.push(IRInstruction::BinOp {
+                            op: self.convert_binop(op),
+                            left: Box::new(IRInstruction::Load(name.clone())),
+                            right: Box::new(val_instr),
+                        });
+                        func.body.push(IRInstruction::Store(name.clone()));
+                    }
+                }
+            }
+            PyStmt::Global(names) => {
+                // Already pre-scanned in convert_stmt; register globals in .data
+                for gn in names {
+                    self.global_vars.insert(gn.clone());
+                    self.all_globals.insert(gn.clone());
                 }
             }
             PyStmt::Pass => {}
@@ -950,7 +1014,13 @@ impl PyToIR {
                 let label = self.add_string(s, program);
                 IRInstruction::LoadString(label)
             }
-            PyExpr::Name(name) => IRInstruction::Load(name.clone()),
+            PyExpr::Name(name) => {
+                if self.global_vars.contains(name) || self.all_globals.contains(name) {
+                    IRInstruction::GlobalLoad(name.clone())
+                } else {
+                    IRInstruction::Load(name.clone())
+                }
+            }
             PyExpr::BinOp { op, left, right } => {
                 let l = self.convert_expr_to_instr(left, program);
                 let r = self.convert_expr_to_instr(right, program);
@@ -1221,11 +1291,70 @@ impl PyToIR {
                     }
                     // ── ctypes module ─────────────────────────
                     "ctypes.CDLL" if !args.is_empty() => {
+                        // v4.0 FASE 4: Detect nvcuda.dll → GPU dispatch
+                        if let PyExpr::StringLiteral(path_str) = &args[0] {
+                            if path_str.contains("nvcuda") || path_str.contains("cuda") {
+                                return IRInstruction::GpuInit;
+                            }
+                        }
                         let path = self.convert_expr_to_instr(&args[0], program);
                         return IRInstruction::Call {
                             func: "__pyb_dll_load".to_string(),
                             args: vec![path],
                         };
+                    }
+                    // v4.0 FASE 4: GPU dispatch functions
+                    "cuda.cuInit" | "cu.cuInit" => {
+                        return IRInstruction::GpuInit;
+                    }
+                    "cuda.cuDeviceGet" | "cu.cuDeviceGet" => {
+                        return IRInstruction::GpuDeviceGet;
+                    }
+                    "cuda.cuCtxCreate" | "cu.cuCtxCreate" => {
+                        return IRInstruction::GpuCtxCreate;
+                    }
+                    "cuda.cuMemAlloc" | "cu.cuMemAlloc" if !args.is_empty() => {
+                        let size = self.convert_expr_to_instr(&args[0], program);
+                        return IRInstruction::GpuMalloc { size: Box::new(size) };
+                    }
+                    "cuda.cuMemcpyHtoD" | "cu.cuMemcpyHtoD" => {
+                        let size = if args.len() >= 3 {
+                            self.convert_expr_to_instr(&args[2], program)
+                        } else {
+                            IRInstruction::LoadConst(IRConstValue::Int(0))
+                        };
+                        return IRInstruction::GpuMemcpyHtoD {
+                            dst: "gpu_ptr".to_string(),
+                            src: "host_ptr".to_string(),
+                            size: Box::new(size),
+                        };
+                    }
+                    "cuda.cuMemcpyDtoH" | "cu.cuMemcpyDtoH" => {
+                        let size = if args.len() >= 3 {
+                            self.convert_expr_to_instr(&args[2], program)
+                        } else {
+                            IRInstruction::LoadConst(IRConstValue::Int(0))
+                        };
+                        return IRInstruction::GpuMemcpyDtoH {
+                            dst: "host_ptr".to_string(),
+                            src: "gpu_ptr".to_string(),
+                            size: Box::new(size),
+                        };
+                    }
+                    "cuda.cuLaunchKernel" | "cu.cuLaunchKernel" => {
+                        let ir_args: Vec<IRInstruction> = args.iter()
+                            .map(|a| self.convert_expr_to_instr(a, program))
+                            .collect();
+                        return IRInstruction::GpuLaunch {
+                            kernel: "cuda_kernel".to_string(),
+                            args: ir_args,
+                        };
+                    }
+                    "cuda.cuMemFree" | "cu.cuMemFree" => {
+                        return IRInstruction::GpuFree { ptr: "gpu_ptr".to_string() };
+                    }
+                    "cuda.cuCtxDestroy" | "cu.cuCtxDestroy" => {
+                        return IRInstruction::GpuCtxDestroy;
                     }
                     "ctypes.c_int" if !args.is_empty() => {
                         // ctypes.c_int(42) → just return the int

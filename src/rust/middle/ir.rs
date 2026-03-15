@@ -169,6 +169,22 @@ pub enum IRInstruction {
     DllGetProc { name: String },            // GetProcAddress
     DllCall { func_ptr: String, args: Vec<IRInstruction> },
 
+    // v4.0 — Global State Tracker (FASE 1)
+    GlobalLoad(String),             // MOV RAX, [__global_name] from .data
+    GlobalStore(String),            // MOV [__global_name], RAX to .data
+
+    // v4.0 — GPU Dispatch (FASE 4)
+    GpuInit,                                            // cuInit(0) via nvcuda.dll
+    GpuDeviceGet,                                       // cuDeviceGet(&dev, 0)
+    GpuCtxCreate,                                       // cuCtxCreate(&ctx, 0, dev)
+    GpuMalloc { size: Box<IRInstruction> },             // cuMemAlloc(&dptr, size)
+    GpuMemcpyHtoD { dst: String, src: String, size: Box<IRInstruction> }, // cuMemcpyHtoD
+    GpuMemcpyDtoH { dst: String, src: String, size: Box<IRInstruction> }, // cuMemcpyDtoH
+    GpuLaunch { kernel: String, args: Vec<IRInstruction> },              // cuLaunchKernel
+    GpuFree { ptr: String },                            // cuMemFree(dptr)
+    GpuCtxDestroy,                                      // cuCtxDestroy(ctx)
+    GpuAvxToCuda { avx_label: String, gpu_ptr: String, count: Box<IRInstruction> }, // AVX2→CUDA handoff
+
     // No-op
     Nop,
 }

@@ -11,3 +11,4 @@ pub mod reg_alloc;
 pub mod isa;
 pub mod bg;
 pub mod output;
+pub mod jit;

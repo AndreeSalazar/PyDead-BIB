@@ -244,6 +244,19 @@ impl Encoder {
         self.data_fixups.push((fixup_pos, data_label.to_string()));
     }
 
+    // Ensure a data label exists (for globals) — 8-byte slot initialized to value
+    fn ensure_data_label(&mut self, label: &str, init_val: i64) {
+        // Check if label already exists
+        if self.data_labels.iter().any(|(l, _)| l == label) {
+            return;
+        }
+        // Align to 8 bytes
+        while self.data.len() % 8 != 0 { self.data.push(0); }
+        let offset = self.data.len() as u32;
+        self.data_labels.push((label.to_string(), offset));
+        self.data.extend_from_slice(&init_val.to_le_bytes());
+    }
+
     fn add_data_string(&mut self, label: &str, s: &str) {
         let offset = self.data.len() as u32;
         self.data_labels.push((label.to_string(), offset));
@@ -1882,6 +1895,25 @@ fn compile_instruction(instr: &IRInstruction, func: &AllocatedFunction, enc: &mu
                 enc.mov_rr(*reg, X86Reg::RAX);
             }
         }
+        // v4.0 — Global State Tracker (FASE 1)
+        IRInstruction::GlobalLoad(name) => {
+            // Load global from .data: LEA RCX, [__global_NAME]; MOV RAX, [RCX]
+            let label = format!("__global_{}", name);
+            enc.ensure_data_label(&label, 0i64);
+            enc.lea_rax_data(&label);
+            // MOV RAX, [RAX] — load value from global address
+            enc.code.extend_from_slice(&[0x48, 0x8B, 0x00]); // MOV RAX, [RAX]
+        }
+        IRInstruction::GlobalStore(name) => {
+            // Store RAX to global in .data: save RAX, LEA RCX, [__global_NAME]; MOV [RCX], saved
+            let label = format!("__global_{}", name);
+            enc.ensure_data_label(&label, 0i64);
+            // Push RAX (value to store), LEA RAX (addr), MOV RCX=addr, POP RAX (value), MOV [RCX], RAX
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX); // RCX = value
+            enc.lea_rax_data(&label);              // RAX = &global
+            // MOV [RAX], RCX
+            enc.code.extend_from_slice(&[0x48, 0x89, 0x08]); // MOV [RAX], RCX
+        }
         IRInstruction::Call { func: callee, args } => {
             // Special: __pyb_obj_new::InitFunc — constructor pattern
             if callee.starts_with("__pyb_obj_new::") {
@@ -1906,8 +1938,14 @@ fn compile_instruction(instr: &IRInstruction, func: &AllocatedFunction, enc: &mu
                 // Now pop args into ABI regs in reverse
                 let abi = [X86Reg::RCX, X86Reg::RDX, X86Reg::R8, X86Reg::R9];
                 let extra_args = args.len() - 1; // excluding alloc_size
+                // Pop extra args that don't fit in ABI regs (leave on stack for callee)
                 for i in (0..extra_args).rev() {
-                    enc.pop(abi[i + 1]); // +1 because slot 0 is self
+                    if i + 1 < abi.len() {
+                        enc.pop(abi[i + 1]); // +1 because slot 0 is self
+                    } else {
+                        // Extra args beyond 4 ABI regs stay on stack
+                        enc.pop(X86Reg::RAX); // discard into RAX (simplified)
+                    }
                 }
                 // self = saved obj ptr (on stack top)
                 enc.pop(X86Reg::RCX); // self = new obj ptr
@@ -2219,6 +2257,84 @@ fn compile_instruction(instr: &IRInstruction, func: &AllocatedFunction, enc: &mu
             enc.sub_rsp(32);
             // CALL RAX — FF D0
             enc.emit(&[0xFF, 0xD0]);
+            enc.add_rsp(32);
+        }
+
+        // v4.0 — GPU Dispatch (FASE 4)
+        // All GPU instructions compile to DLL calls via nvcuda.dll
+        // The actual CUDA driver API is called through LoadLibraryA + GetProcAddress
+        IRInstruction::GpuInit => {
+            // cuInit(0): load nvcuda.dll, get cuInit, call with 0
+            let nvcuda_label = "__gpu_nvcuda_path";
+            enc.ensure_data_label(nvcuda_label, 0);
+            // For now, emit as a call to our GPU runtime stub
+            enc.mov_imm64(X86Reg::RCX, 0); // flags = 0
+            enc.sub_rsp(32);
+            enc.call_label("__pyb_gpu_init");
+            enc.add_rsp(32);
+        }
+        IRInstruction::GpuDeviceGet => {
+            enc.mov_imm64(X86Reg::RCX, 0); // device ordinal = 0
+            enc.sub_rsp(32);
+            enc.call_label("__pyb_gpu_device_get");
+            enc.add_rsp(32);
+        }
+        IRInstruction::GpuCtxCreate => {
+            enc.sub_rsp(32);
+            enc.call_label("__pyb_gpu_ctx_create");
+            enc.add_rsp(32);
+        }
+        IRInstruction::GpuMalloc { size } => {
+            compile_instruction(size, func, enc, saved_regs, stack_size);
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("__pyb_gpu_malloc");
+            enc.add_rsp(32);
+        }
+        IRInstruction::GpuMemcpyHtoD { dst: _, src: _, size } => {
+            compile_instruction(size, func, enc, saved_regs, stack_size);
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("__pyb_gpu_memcpy_htod");
+            enc.add_rsp(32);
+        }
+        IRInstruction::GpuMemcpyDtoH { dst: _, src: _, size } => {
+            compile_instruction(size, func, enc, saved_regs, stack_size);
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("__pyb_gpu_memcpy_dtoh");
+            enc.add_rsp(32);
+        }
+        IRInstruction::GpuLaunch { kernel, args } => {
+            // Load kernel name, then call launch stub
+            for (i, arg) in args.iter().enumerate() {
+                compile_instruction(arg, func, enc, saved_regs, stack_size);
+                let abi = [X86Reg::RCX, X86Reg::RDX, X86Reg::R8, X86Reg::R9];
+                if i < abi.len() { enc.mov_rr(abi[i], X86Reg::RAX); }
+            }
+            enc.sub_rsp(32);
+            enc.call_label("__pyb_gpu_launch");
+            enc.add_rsp(32);
+        }
+        IRInstruction::GpuFree { ptr: _ } => {
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("__pyb_gpu_free");
+            enc.add_rsp(32);
+        }
+        IRInstruction::GpuCtxDestroy => {
+            enc.sub_rsp(32);
+            enc.call_label("__pyb_gpu_ctx_destroy");
+            enc.add_rsp(32);
+        }
+        IRInstruction::GpuAvxToCuda { avx_label, gpu_ptr: _, count } => {
+            // Load AVX2 data address, then transfer to GPU
+            enc.lea_rax_data(avx_label);
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            compile_instruction(count, func, enc, saved_regs, stack_size);
+            enc.mov_rr(X86Reg::RDX, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("__pyb_gpu_avx_to_cuda");
             enc.add_rsp(32);
         }
 

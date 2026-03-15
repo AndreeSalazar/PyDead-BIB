@@ -99,18 +99,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 eprintln!("Usage: pyb run <file.py>");
                 std::process::exit(1);
             }
-            compile_python_file(&args[2], &args)?;
-            let output = get_output_filename(&args[2], &args);
-            println!("🚀 Running {}...\n", &args[2]);
-            let exe_path = if cfg!(target_os = "windows") {
-                format!(".\\{}", output)
-            } else {
-                format!("./{}", output)
-            };
-            let status = std::process::Command::new(&exe_path).status()?;
-            if !status.success() {
-                eprintln!("\n⚠️  Program exited with status: {}", status);
-            }
+            // FASE 2: JIT execution via VirtualAlloc — no .exe written to disk
+            jit_execute(&args[2])?;
         }
 
         // ============================================================
@@ -268,6 +258,20 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     let mut inferencer = pydead_bib::frontend::python::py_types::PyTypeInferencer::new();
     let typed_ast = inferencer.infer(&ast);
     println!("  {}{}✓{} inference complete", GREEN, BOLD, RESET);
+    // v4.0 FASE 3: Show struct layouts
+    if !inferencer.class_layouts.is_empty() {
+        for (cls_name, layout) in &inferencer.class_layouts {
+            let parent = layout.parent.as_deref().unwrap_or("none");
+            println!("  {}├─{} {}class{} {}{}{} ({} fields, {}B, parent: {})",
+                DIM, RESET, YELLOW, RESET, BOLD, cls_name, RESET,
+                layout.fields.len(), layout.total_size, parent);
+        }
+    }
+    if !inferencer.dynamic_fallbacks.is_empty() {
+        for warn in &inferencer.dynamic_fallbacks {
+            println!("  {}⚠{} {}{}{}", YELLOW, RESET, DIM, warn, RESET);
+        }
+    }
 
     // ── Phase 06: IR Generation ───────────────────────────────
     println!("{}{}▸ Phase 06:{} {}IR GEN (ADeadOp SSA){}", BOLD, BLUE, RESET, CYAN, RESET);
@@ -408,6 +412,94 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
 }
 
 // ============================================================
+// JIT Execute — FASE 2: VirtualAlloc Executor
+// ============================================================
+fn jit_execute(input_file: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let source = fs::read_to_string(input_file)
+        .map_err(|e| format!("Cannot read '{}': {}", input_file, e))?;
+
+    println!();
+    println!("{}{}╔══════════════════════════════════════════════════════════════╗{}", BOLD, MAGENTA, RESET);
+    println!("{}{}║   PyDead-BIB JIT v4.0 — VirtualAlloc Executor                ║{}", BOLD, MAGENTA, RESET);
+    println!("{}{}╚══════════════════════════════════════════════════════════════╝{}", BOLD, MAGENTA, RESET);
+    println!("  {}Source:{} {}{}{}", DIM, RESET, BOLD, input_file, RESET);
+    println!("  {}Mode:{}   {}in-memory (no .exe){}", DIM, RESET, GREEN, RESET);
+    println!();
+
+    // Preprocess
+    let mut preprocessor = pydead_bib::frontend::python::py_preprocessor::PyPreprocessor::new();
+    let preprocessed = preprocessor.process(&source);
+
+    // Lex
+    let mut lexer = pydead_bib::frontend::python::py_lexer::PyLexer::new(&preprocessed);
+    let tokens = lexer.tokenize();
+
+    // Parse
+    let mut parser = pydead_bib::frontend::python::py_parser::PyParser::new(tokens);
+    let ast = parser.parse().map_err(|e| format!("Parse error: {}", e))?;
+
+    // Type inference
+    let mut inferencer = pydead_bib::frontend::python::py_types::PyTypeInferencer::new();
+    let typed_ast = inferencer.infer(&ast);
+
+    // IR gen
+    let ir = compile_python_to_ir(&typed_ast).map_err(|e| format!("IR error: {}", e))?;
+
+    // Optimize
+    let mut ir = ir;
+    for func in ir.functions.iter_mut() {
+        pydead_bib::middle::ir::optimize_function(func);
+    }
+
+    // UB detect
+    let mut ub_detector = pydead_bib::middle::ub_detector::PyUBDetector::new()
+        .with_file(input_file.to_string());
+    let reports = ub_detector.analyze(&ir);
+    let ub_errors = reports.iter().filter(|r| matches!(r.severity, pydead_bib::middle::ub_detector::UBSeverity::Error)).count();
+    if ub_errors > 0 {
+        return Err(format!("{} UB error(s)", ub_errors).into());
+    }
+
+    // Optimize pass 2
+    let optimized = pydead_bib::backend::optimizer::optimize(&ir);
+
+    // Register allocate
+    let allocated = pydead_bib::backend::reg_alloc::allocate(&optimized);
+
+    // ISA compile
+    let target = Target::from_str("windows");
+    let compiled = pydead_bib::backend::isa::compile(&allocated, target);
+
+    println!("  {}compiled:{} {} bytes .text, {} bytes .data", DIM, RESET, compiled.stats.total_bytes, compiled.data.len());
+    println!("  {}funcs:{}    {}", DIM, RESET, compiled.stats.functions_compiled);
+    println!();
+
+    // JIT execute
+    println!("  {}{}▸ JIT:{} VirtualAlloc → execute in RAM", BOLD, MAGENTA, RESET);
+    let start = std::time::Instant::now();
+
+    match pydead_bib::backend::jit::execute_in_memory(
+        &compiled.text,
+        &compiled.data,
+        compiled.entry_point,
+        &compiled.data_fixups,
+        &compiled.data_labels,
+        &compiled.iat_fixups,
+    ) {
+        Ok(code) => {
+            let elapsed = start.elapsed();
+            println!();
+            println!("  {}{}JIT complete{} in {:.2}ms (exit: {})", GREEN, BOLD, RESET, elapsed.as_secs_f64() * 1000.0, code);
+        }
+        Err(e) => {
+            println!("  {}{}JIT error:{} {}", RED, BOLD, RESET, e);
+        }
+    }
+
+    Ok(())
+}
+
+// ============================================================
 // Test suite — pyb test
 // ============================================================
 fn run_test_suite() -> Result<(), Box<dyn std::error::Error>> {
@@ -502,6 +594,12 @@ fn run_test_suite() -> Result<(), Box<dyn std::error::Error>> {
         ("Metal_Dead/tools/file_manager.py", "MD File Mgr"),
         ("Metal_Dead/tools/data_analyst.py", "MD Data Analyst"),
         ("Metal_Dead/integrations/llm_bridge.py", "MD LLM Bridge"),
+        // v4.0 — FASE 1: Global State Tracker
+        ("tests/test_globals.py", "Globals"),
+        // v4.0 — FASE 3: Type Inferencer v2
+        ("tests/test_inheritance_v2.py", "Inherit v2"),
+        // v4.0 — FASE 4: GPU Dispatch
+        ("tests/test_gpu_dispatch.py", "GPU Dispatch"),
     ];
 
     let mut passed = 0;

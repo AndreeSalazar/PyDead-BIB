@@ -33,6 +33,73 @@ pub enum ConcreteType {
     Dynamic,           // could not infer — fallback
 }
 
+// ══════════════════════════════════════════════════════════
+// v4.0 — FASE 3: StructLayout & Deep Type Inference
+// ══════════════════════════════════════════════════════════
+
+/// Field in a struct layout — name, type, byte offset
+#[derive(Debug, Clone)]
+pub struct StructField {
+    pub name: String,
+    pub field_type: ConcreteType,
+    pub byte_offset: usize,
+}
+
+/// Struct layout for a class — ordered fields with offsets
+#[derive(Debug, Clone)]
+pub struct StructLayout {
+    pub class_name: String,
+    pub parent: Option<String>,
+    pub fields: Vec<StructField>,
+    pub total_size: usize,
+    pub dynamic_warnings: Vec<String>,
+}
+
+impl StructLayout {
+    pub fn new(name: &str) -> Self {
+        Self {
+            class_name: name.to_string(),
+            parent: None,
+            fields: Vec::new(),
+            total_size: 8, // 8 bytes for class_id at offset 0
+            dynamic_warnings: Vec::new(),
+        }
+    }
+
+    /// Add a field to the layout, computing byte offset
+    pub fn add_field(&mut self, name: &str, field_type: ConcreteType) {
+        // Skip if field already exists (from parent)
+        if self.fields.iter().any(|f| f.name == name) {
+            return;
+        }
+        let offset = self.total_size;
+        self.fields.push(StructField {
+            name: name.to_string(),
+            field_type: field_type.clone(),
+            byte_offset: offset,
+        });
+        let field_size = match &field_type {
+            ConcreteType::Int64 | ConcreteType::Float64 | ConcreteType::Str
+            | ConcreteType::Bool | ConcreteType::NoneType => 8,
+            ConcreteType::Object(_) => 8, // pointer
+            ConcreteType::List(_) | ConcreteType::Dict(_, _) => 8, // pointer
+            ConcreteType::Dynamic => 8, // pointer-sized fallback
+            _ => 8,
+        };
+        self.total_size += field_size;
+    }
+
+    /// Get field offset by name
+    pub fn field_offset(&self, name: &str) -> Option<usize> {
+        self.fields.iter().find(|f| f.name == name).map(|f| f.byte_offset)
+    }
+
+    /// Get field type by name
+    pub fn field_type(&self, name: &str) -> Option<&ConcreteType> {
+        self.fields.iter().find(|f| f.name == name).map(|f| &f.field_type)
+    }
+}
+
 /// Type inference result for a scope
 #[derive(Debug, Clone)]
 pub struct TypeEnv {
@@ -43,6 +110,10 @@ pub struct TypeEnv {
 /// Python type inferencer
 pub struct PyTypeInferencer {
     env_stack: Vec<TypeEnv>,
+    // v4.0 FASE 3: Class registry
+    pub class_layouts: HashMap<String, StructLayout>,
+    pub inheritance_chain: HashMap<String, Vec<String>>, // class → [parent, grandparent, ...]
+    pub dynamic_fallbacks: Vec<String>, // compile-time warnings for Dynamic fields
 }
 
 impl PyTypeInferencer {
@@ -84,6 +155,9 @@ impl PyTypeInferencer {
 
         Self {
             env_stack: vec![global],
+            class_layouts: HashMap::new(),
+            inheritance_chain: HashMap::new(),
+            dynamic_fallbacks: Vec::new(),
         }
     }
 
@@ -159,8 +233,62 @@ impl PyTypeInferencer {
                 for s in body { self.infer_stmt(s); }
                 for s in orelse { self.infer_stmt(s); }
             }
-            PyStmt::ClassDef { name, body, .. } => {
+            PyStmt::ClassDef { name, bases, body, .. } => {
                 self.current_env_mut().bindings.insert(name.clone(), ConcreteType::Object(name.clone()));
+
+                // v4.0 FASE 3: Build StructLayout with deep __init__ inference
+                let mut layout = StructLayout::new(name);
+
+                // Resolve inheritance chain
+                let mut chain = Vec::new();
+                for base in bases {
+                    if let PyExpr::Name(base_name) = base {
+                        chain.push(base_name.clone());
+                        layout.parent = Some(base_name.clone());
+                        // Copy parent fields (deep inheritance)
+                        if let Some(parent_layout) = self.class_layouts.get(base_name).cloned() {
+                            for field in &parent_layout.fields {
+                                layout.add_field(&field.name, field.field_type.clone());
+                            }
+                            // Also inherit grandparent chain
+                            if let Some(parent_chain) = self.inheritance_chain.get(base_name).cloned() {
+                                chain.extend(parent_chain);
+                            }
+                        }
+                    }
+                }
+                self.inheritance_chain.insert(name.clone(), chain);
+
+                // Deep __init__ inference: scan self.x = val assignments
+                for s in body {
+                    if let PyStmt::FunctionDef { name: method_name, body: method_body, .. } = s {
+                        if method_name == "__init__" {
+                            for ms in method_body {
+                                if let PyStmt::Assign { targets, value } = ms {
+                                    for t in targets {
+                                        if let PyExpr::Attribute { value: target_obj, attr } = t {
+                                            if let PyExpr::Name(n) = target_obj.as_ref() {
+                                                if n == "self" {
+                                                    // Infer field type from RHS
+                                                    let field_type = self.infer_expr(value);
+                                                    if field_type == ConcreteType::Dynamic {
+                                                        self.dynamic_fallbacks.push(
+                                                            format!("{}::{}: type could not be inferred, using Dynamic", name, attr)
+                                                        );
+                                                    }
+                                                    layout.add_field(attr, field_type);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                self.class_layouts.insert(name.clone(), layout);
+
                 for s in body { self.infer_stmt(s); }
             }
             _ => {}
