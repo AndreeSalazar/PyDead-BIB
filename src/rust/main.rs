@@ -464,6 +464,16 @@ fn run_test_suite() -> Result<(), Box<dyn std::error::Error>> {
         ("tests/test_ctypes.py", "CTypes"),
         ("tests/test_simd.py", "SIMD AVX2"),
         ("tests/test_optimizations.py", "Optimizations"),
+        // pyb_ai — Metal-Dead + IA-Personal rewritten for PyDead-BIB
+        ("pyb_ai/tokenizer.py", "AI Tokenizer"),
+        ("pyb_ai/memory.py", "AI Memory"),
+        ("pyb_ai/context.py", "AI Context"),
+        ("pyb_ai/model.py", "AI Model"),
+        ("pyb_ai/intelligence.py", "AI Intelligence"),
+        ("pyb_ai/metal_dead.py", "Metal-Dead"),
+        ("pyb_ai/ollama_bridge.py", "Ollama Bridge"),
+        ("pyb_ai/ia_personal.py", "IA-Personal"),
+        ("pyb_ai/main.py", "AI Suite"),
     ];
 
     let mut passed = 0;
