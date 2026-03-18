@@ -160,7 +160,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         _ => {
             if command.ends_with(".py") {
-                compile_python_file(command, &args)?;
+                // v4.5: Default → JIT 2.0 (no .exe written)
+                // Use `pyb py file.py` to explicitly compile to .exe
+                jit_execute(command)?;
             } else {
                 eprintln!("❌ Unknown command: '{}'", command);
                 print_usage(&args[0]);
@@ -689,6 +691,14 @@ fn run_test_suite() -> Result<(), Box<dyn std::error::Error>> {
         // v4.0 — Metal_Dead GPU + Benchmark
         ("Metal_Dead/integrations/gpu_vulkan.py", "MD Vulkan GPU"),
         ("Metal_Dead/integrations/metal_dead_benchmark.py", "MD Benchmark"),
+        // v4.5 — str/list/dict completo
+        ("tests/test_str_v45.py", "Str v4.5"),
+        ("tests/test_list_v45.py", "List v4.5"),
+        ("tests/test_dict_v45.py", "Dict v4.5"),
+        // v4.6
+        ("tests/test_dict_str_keys_v46.py", "Dict Str Keys v46"),
+        ("tests/test_list_iter_v46.py", "List Iter v46"),
+        ("tests/test_print_list_v46.py", "Print List v46"),
     ];
 
     let mut passed = 0;
@@ -958,8 +968,9 @@ fn print_usage(program: &str) {
     println!("{}{}╚══════════════════════════════════════════════════════════════╝{}", BOLD, CYAN, RESET);
     println!();
     println!("{}Usage:{}", BOLD, RESET);
-    println!("  {}{}py{} <file.py> [-o output]          {}Compile Python → native{}", BOLD, GREEN, RESET, DIM, RESET);
-    println!("  {}{}run{} <file.py>                     {}Compile and run{}", BOLD, GREEN, RESET, DIM, RESET);
+    println!("  {}{}<file.py>{}                         {}Run Python via JIT 2.0 (default){}", BOLD, GREEN, RESET, DIM, RESET);
+    println!("  {}{}py{} <file.py> [-o output]          {}Compile Python → native .exe{}", BOLD, GREEN, RESET, DIM, RESET);
+    println!("  {}{}run{} <file.py>                     {}JIT 2.0 with stats{}", BOLD, GREEN, RESET, DIM, RESET);
     println!("  {}{}test{}                              {}Run test suite{}", BOLD, YELLOW, RESET, DIM, RESET);
     println!("  {}{}install{} <package>                 {}Install native package{}", BOLD, BLUE, RESET, DIM, RESET);
     println!("  {}{}list{}                              {}List installed packages{}", BOLD, BLUE, RESET, DIM, RESET);

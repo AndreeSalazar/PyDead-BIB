@@ -69,6 +69,7 @@ pub struct PyToIR {
     string_counter: u64,
     string_vars: std::collections::HashMap<String, String>, // var_name → string label
     dict_vars: std::collections::HashSet<String>, // variables that are dicts
+    list_vars: std::collections::HashSet<String>, // variables that are lists
     file_vars: std::collections::HashSet<String>, // variables that are file handles
     str_heap_vars: std::collections::HashSet<String>, // variables that are heap strings
     except_label_stack: Vec<String>, // stack of except handler labels for raise
@@ -85,6 +86,7 @@ impl PyToIR {
             string_counter: 0,
             string_vars: std::collections::HashMap::new(),
             dict_vars: std::collections::HashSet::new(),
+            list_vars: std::collections::HashSet::new(),
             file_vars: std::collections::HashSet::new(),
             str_heap_vars: std::collections::HashSet::new(),
             except_label_stack: Vec::new(),
@@ -358,8 +360,9 @@ impl PyToIR {
                                 if let Some(key_expr) = k {
                                     let key_instr = self.convert_expr_to_instr(key_expr, program);
                                     let val_instr = self.convert_expr_to_instr(v, program);
+                                    let set_func = if self.is_str_expr(key_expr) { "__pyb_dict_str_set" } else { "__pyb_dict_set" };
                                     func.body.push(IRInstruction::Call {
-                                        func: "__pyb_dict_set".to_string(),
+                                        func: set_func.to_string(),
                                         args: vec![
                                             IRInstruction::Load(name.clone()),
                                             key_instr,
@@ -377,6 +380,7 @@ impl PyToIR {
                 if targets.len() == 1 {
                     if let PyExpr::Name(name) = &targets[0] {
                         if let PyExpr::List(elts) = value {
+                            self.list_vars.insert(name.clone());
                             // Create new list and append each element
                             func.body.push(IRInstruction::VarDecl {
                                 name: name.clone(),
@@ -433,6 +437,10 @@ impl PyToIR {
                             if fn_str.ends_with(".upper") || fn_str.ends_with(".lower") || fn_str.ends_with(".replace") {
                                 self.str_heap_vars.insert(var_name.clone());
                             }
+                            // .split() returns list
+                            if fn_str.ends_with(".split") {
+                                self.list_vars.insert(var_name.clone());
+                            }
                         }
                     }
                 }
@@ -457,6 +465,19 @@ impl PyToIR {
                             func.body.push(val_instr.clone());
                             func.body.push(IRInstruction::Store(name.clone()));
                         }
+                    } else if let PyExpr::Subscript { value: dict_expr, slice: key_expr } = target {
+                        // Dictionary subscript assignment: d[k] = v
+                        let dict_instr = self.convert_expr_to_instr(dict_expr, program);
+                        let key_instr = self.convert_expr_to_instr(key_expr, program);
+                        let set_func = if self.is_str_expr(key_expr) { "__pyb_dict_str_set" } else { "__pyb_dict_set" };
+                        func.body.push(IRInstruction::Call {
+                            func: set_func.to_string(),
+                            args: vec![
+                                dict_instr,
+                                key_instr,
+                                val_instr.clone(),
+                            ],
+                        });
                     }
                 }
             }
@@ -600,23 +621,99 @@ impl PyToIR {
                         }
                     }
                 }
-                // Fallback: generic for (not implemented yet)
-                let iter_label = fresh_temp("for");
-                let end_label = fresh_temp("endfor");
-                let iter_instr = self.convert_expr_to_instr(iter, program);
-                func.body.push(iter_instr);
-                func.body.push(IRInstruction::Label(iter_label.clone()));
-                if let PyExpr::Name(name) = target {
-                    func.body.push(IRInstruction::IterNext {
-                        target: name.clone(),
-                        end_label: end_label.clone(),
-                    });
+                
+                // Track list variables for `for x in my_list:`
+                let is_list = if let PyExpr::Name(n) = iter {
+                    self.list_vars.contains(n)
+                } else { false };
+
+                if is_list {
+                    // List iteration: 
+                    // __idx = 0
+                    // __len = __pyb_list_len(list)
+                    // label loop:
+                    // if __idx >= __len goto end
+                    // target = __pyb_list_get(list, __idx)
+                    // body
+                    // __idx = __idx + 1
+                    // goto loop
+                    // label end:
+                    let idx_var = fresh_temp("idx");
+                    let len_var = fresh_temp("len");
+                    
+                    func.body.push(IRInstruction::VarDecl { name: idx_var.clone(), ir_type: IRType::I64 });
+                    func.body.push(IRInstruction::VarDecl { name: len_var.clone(), ir_type: IRType::I64 });
+                    
+                    if let PyExpr::Name(target_name) = target {
+                        func.body.push(IRInstruction::VarDecl { name: target_name.clone(), ir_type: IRType::I64 });
+                        
+                        // init __idx = 0
+                        func.body.push(IRInstruction::LoadConst(IRConstValue::Int(0)));
+                        func.body.push(IRInstruction::Store(idx_var.clone()));
+                        
+                        // init __len = __pyb_list_len(list)
+                        let list_instr = self.convert_expr_to_instr(iter, program);
+                        func.body.push(IRInstruction::Call {
+                            func: "__pyb_list_len".to_string(),
+                            args: vec![list_instr.clone()],
+                        });
+                        func.body.push(IRInstruction::Store(len_var.clone()));
+                        
+                        let loop_label = fresh_temp("for_list");
+                        let end_label = fresh_temp("endfor_list");
+                        
+                        func.body.push(IRInstruction::Label(loop_label.clone()));
+                        
+                        // if __idx < __len is false goto end
+                        func.body.push(IRInstruction::Compare {
+                            op: IRCmpOp::Lt,
+                            left: Box::new(IRInstruction::Load(idx_var.clone())),
+                            right: Box::new(IRInstruction::Load(len_var.clone())),
+                        });
+                        func.body.push(IRInstruction::BranchIfFalse(end_label.clone()));
+                        
+                        // target = __pyb_list_get(list, __idx)
+                        func.body.push(IRInstruction::Call {
+                            func: "__pyb_list_get".to_string(),
+                            args: vec![list_instr, IRInstruction::Load(idx_var.clone())],
+                        });
+                        func.body.push(IRInstruction::Store(target_name.clone()));
+                        
+                        // body
+                        for s in body {
+                            self.convert_body_stmt(s, func, program)?;
+                        }
+                        
+                        // __idx = __idx + 1
+                        func.body.push(IRInstruction::BinOp {
+                            op: IROp::Add,
+                            left: Box::new(IRInstruction::Load(idx_var.clone())),
+                            right: Box::new(IRInstruction::LoadConst(IRConstValue::Int(1))),
+                        });
+                        func.body.push(IRInstruction::Store(idx_var.clone()));
+                        
+                        func.body.push(IRInstruction::Jump(loop_label));
+                        func.body.push(IRInstruction::Label(end_label));
+                    }
+                } else {
+                    // Fallback: generic for (IterNext)
+                    let iter_label = fresh_temp("for");
+                    let end_label = fresh_temp("endfor");
+                    let iter_instr = self.convert_expr_to_instr(iter, program);
+                    func.body.push(iter_instr);
+                    func.body.push(IRInstruction::Label(iter_label.clone()));
+                    if let PyExpr::Name(name) = target {
+                        func.body.push(IRInstruction::IterNext {
+                            target: name.clone(),
+                            end_label: end_label.clone(),
+                        });
+                    }
+                    for s in body {
+                        self.convert_body_stmt(s, func, program)?;
+                    }
+                    func.body.push(IRInstruction::Jump(iter_label));
+                    func.body.push(IRInstruction::Label(end_label));
                 }
-                for s in body {
-                    self.convert_body_stmt(s, func, program)?;
-                }
-                func.body.push(IRInstruction::Jump(iter_label));
-                func.body.push(IRInstruction::Label(end_label));
             }
             PyStmt::Expr(expr) => {
                 // Intercept method calls: obj.append(val)
@@ -760,12 +857,9 @@ impl PyToIR {
                                             let instr = self.convert_expr_to_instr(arg, program);
                                             func.body.push(instr);
                                             func.body.push(IRInstruction::PrintChar);
-                                        } else {
                                             // v4.5: Check if arg is a list variable → print via __pyb_list_print
                                             let is_list_var = if let PyExpr::Name(n) = arg {
-                                                !self.dict_vars.contains(n) && !self.string_vars.contains_key(n)
-                                                && !self.str_heap_vars.contains(n) && !self.file_vars.contains(n)
-                                                && !self.class_vars.contains_key(n) && !self.global_vars.contains(n)
+                                                self.list_vars.contains(n)
                                             } else { false };
                                             // Check if arg is a bool-producing call (startswith, endswith, etc)
                                             let is_bool_call = if let PyExpr::Call { func: f, .. } = arg {
@@ -777,7 +871,15 @@ impl PyToIR {
                                                 };
                                                 fn_str
                                             } else { false };
-                                            if is_bool_call {
+                                            
+                                            if is_list_var {
+                                                let instr = self.convert_expr_to_instr(arg, program);
+                                                func.body.push(instr);
+                                                func.body.push(IRInstruction::Call {
+                                                    func: "__pyb_list_print".to_string(),
+                                                    args: vec![],
+                                                });
+                                            } else if is_bool_call {
                                                 let instr = self.convert_expr_to_instr(arg, program);
                                                 func.body.push(instr);
                                                 // Print True or False based on RAX value
@@ -1056,6 +1158,26 @@ impl PyToIR {
                 }
             }
             PyExpr::BinOp { op, left, right } => {
+                // v4.5: str + str → __pyb_str_concat
+                let left_is_str = self.is_str_expr(left);
+                let right_is_str = self.is_str_expr(right);
+                if matches!(op, PyBinOp::Add) && (left_is_str || right_is_str) {
+                    let l = self.convert_expr_to_instr(left, program);
+                    let r = self.convert_expr_to_instr(right, program);
+                    return IRInstruction::Call {
+                        func: "__pyb_str_concat".to_string(),
+                        args: vec![l, r],
+                    };
+                }
+                // v4.5: str * int → __pyb_str_repeat
+                if matches!(op, PyBinOp::Mul) && left_is_str {
+                    let l = self.convert_expr_to_instr(left, program);
+                    let r = self.convert_expr_to_instr(right, program);
+                    return IRInstruction::Call {
+                        func: "__pyb_str_repeat".to_string(),
+                        args: vec![l, r],
+                    };
+                }
                 let l = self.convert_expr_to_instr(left, program);
                 let r = self.convert_expr_to_instr(right, program);
                 IRInstruction::BinOp {
@@ -1691,7 +1813,7 @@ impl PyToIR {
                                                 IRInstruction::Load(obj_name.to_string())
                                             };
                                             return IRInstruction::Call {
-                                                func: "__pyb_str_upper".to_string(), // strip reuses upper path for now (trim spaces = copy non-space bytes)
+                                                func: "__pyb_str_strip".to_string(),
                                                 args: vec![src],
                                             };
                                         }
@@ -1717,15 +1839,16 @@ impl PyToIR {
                                     match method {
                                         "get" if !args.is_empty() => {
                                             let key = self.convert_expr_to_instr(&args[0], program);
+                                            let get_func = if self.is_str_expr(&args[0]) { "__pyb_dict_str_get" } else { "__pyb_dict_get" };
                                             if args.len() >= 2 {
                                                 // d.get(key, default) — for now just use dict_get (returns 0 if not found)
                                                 return IRInstruction::Call {
-                                                    func: "__pyb_dict_get".to_string(),
+                                                    func: get_func.to_string(),
                                                     args: vec![IRInstruction::Load(obj_name.to_string()), key],
                                                 };
                                             }
                                             return IRInstruction::Call {
-                                                func: "__pyb_dict_get".to_string(),
+                                                func: get_func.to_string(),
                                                 args: vec![IRInstruction::Load(obj_name.to_string()), key],
                                             };
                                         }
@@ -1796,8 +1919,39 @@ impl PyToIR {
                 }
             }
             PyExpr::Compare { left, ops, comparators } => {
-                let l = self.convert_expr_to_instr(left, program);
+                // v4.5: `x in list` → __pyb_list_contains, `x in str` → __pyb_str_contains
                 if let (Some(op), Some(right)) = (ops.first(), comparators.first()) {
+                    if matches!(op, PyCmpOp::In | PyCmpOp::NotIn) {
+                        let container = self.convert_expr_to_instr(right, program);
+                        let needle = self.convert_expr_to_instr(left, program);
+                        let container_is_str = self.is_str_expr(right) || if let PyExpr::Name(n) = right {
+                            self.string_vars.contains_key(n) || self.str_heap_vars.contains(n)
+                        } else { false };
+                        let container_is_dict = if let PyExpr::Name(n) = right {
+                            self.dict_vars.contains(n)
+                        } else { false };
+                        let stub = if container_is_str {
+                            "__pyb_str_contains"
+                        } else if container_is_dict {
+                            "__pyb_dict_contains"
+                        } else {
+                            "__pyb_list_contains"
+                        };
+                        let result = IRInstruction::Call {
+                            func: stub.to_string(),
+                            args: vec![container, needle],
+                        };
+                        if matches!(op, PyCmpOp::NotIn) {
+                            // NOT: XOR result with 1
+                            return IRInstruction::BinOp {
+                                op: IROp::Xor,
+                                left: Box::new(result),
+                                right: Box::new(IRInstruction::LoadConst(IRConstValue::Int(1))),
+                            };
+                        }
+                        return result;
+                    }
+                    let l = self.convert_expr_to_instr(left, program);
                     let r = self.convert_expr_to_instr(right, program);
                     IRInstruction::Compare {
                         op: self.convert_cmpop(op),
@@ -1805,7 +1959,7 @@ impl PyToIR {
                         right: Box::new(r),
                     }
                 } else {
-                    l
+                    self.convert_expr_to_instr(left, program)
                 }
             }
             PyExpr::UnaryOp { op, operand } => {
@@ -1845,8 +1999,9 @@ impl PyToIR {
                     self.dict_vars.contains(n)
                 } else { false };
                 if is_dict {
+                    let get_func = if self.is_str_expr(slice) { "__pyb_dict_str_get" } else { "__pyb_dict_get" };
                     IRInstruction::Call {
-                        func: "__pyb_dict_get".to_string(),
+                        func: get_func.to_string(),
                         args: vec![obj_instr, idx_instr],
                     }
                 } else {
@@ -2017,6 +2172,29 @@ impl PyToIR {
                     }
                 }
                 false
+            }
+            _ => false,
+        }
+    }
+
+    fn is_str_expr(&self, expr: &PyExpr) -> bool {
+        match expr {
+            PyExpr::StringLiteral(_) | PyExpr::FString { .. } => true,
+            PyExpr::Name(n) => {
+                self.str_heap_vars.contains(n) || self.string_vars.contains_key(n)
+            }
+            PyExpr::Call { func, .. } => {
+                if let PyExpr::Name(n) = func.as_ref() {
+                    return matches!(n.as_str(), "str");
+                }
+                if let PyExpr::Attribute { attr, .. } = func.as_ref() {
+                    return matches!(attr.as_str(), "upper" | "lower" | "strip" | "replace"
+                        | "join" | "lstrip" | "rstrip" | "format" | "read" | "startswith" | "endswith");
+                }
+                false
+            }
+            PyExpr::BinOp { op: PyBinOp::Add, left, right } => {
+                self.is_str_expr(left) || self.is_str_expr(right)
             }
             _ => false,
         }
