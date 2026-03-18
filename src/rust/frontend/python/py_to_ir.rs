@@ -857,6 +857,7 @@ impl PyToIR {
                                             let instr = self.convert_expr_to_instr(arg, program);
                                             func.body.push(instr);
                                             func.body.push(IRInstruction::PrintChar);
+                                        } else {
                                             // v4.5: Check if arg is a list variable → print via __pyb_list_print
                                             let is_list_var = if let PyExpr::Name(n) = arg {
                                                 self.list_vars.contains(n)
@@ -1647,8 +1648,22 @@ impl PyToIR {
                     }
                     "len" if !args.is_empty() => {
                         let arg = self.convert_expr_to_instr(&args[0], program);
+                        // Type-aware len dispatch
+                        let len_func = if let PyExpr::Name(n) = &args[0] {
+                            if self.dict_vars.contains(n) {
+                                "__pyb_dict_len_builtin"
+                            } else if self.str_heap_vars.contains(n) || self.string_vars.contains_key(n) {
+                                "__pyb_str_len_builtin"
+                            } else {
+                                "__builtin_len"
+                            }
+                        } else if matches!(&args[0], PyExpr::StringLiteral(_)) {
+                            "__pyb_str_len_builtin"
+                        } else {
+                            "__builtin_len"
+                        };
                         return IRInstruction::Call {
-                            func: "__builtin_len".to_string(),
+                            func: len_func.to_string(),
                             args: vec![arg],
                         };
                     }
@@ -1825,7 +1840,7 @@ impl PyToIR {
                                             };
                                             let sep = self.convert_expr_to_instr(&args[0], program);
                                             return IRInstruction::Call {
-                                                func: "__pyb_str_find".to_string(), // split stub (simplified: returns find index)
+                                                func: "__pyb_str_split".to_string(),
                                                 args: vec![src, sep],
                                             };
                                         }
