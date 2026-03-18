@@ -1732,7 +1732,7 @@ fn emit_runtime_stubs(enc: &mut Encoder, target: Target) {
     enc.pop(X86Reg::RBX);
     enc.ret();
 
-    // __pyb_str_print: RCX=heap str -> prints + newline
+    // __pyb_str_print: RCX=heap str -> prints (no newline)
     enc.label("__pyb_str_print");
     enc.push(X86Reg::RBX);
     enc.sub_rsp(32);
@@ -1741,6 +1741,585 @@ fn emit_runtime_stubs(enc: &mut Encoder, target: Target) {
     enc.mov_rr(X86Reg::RCX, X86Reg::RBX);
     enc.mov_rr(X86Reg::RDX, X86Reg::RAX);
     enc.call_label("__pyb_print_str");
+    enc.add_rsp(32);
+    enc.pop(X86Reg::RBX);
+    enc.ret();
+
+    // ══════════════════════════════════════════════════════════
+    // v4.5 — str completo runtime stubs
+    // ══════════════════════════════════════════════════════════
+
+    // __pyb_str_concat: RCX=str_a, RDX=str_b → RAX=new heap str (a+b)
+    enc.label("__pyb_str_concat");
+    enc.push(X86Reg::RBX);
+    enc.push(X86Reg::RSI);
+    enc.push(X86Reg::RDI);
+    enc.push(X86Reg::R12);
+    enc.push(X86Reg::R13);
+    enc.sub_rsp(32);
+    enc.mov_rr(X86Reg::RSI, X86Reg::RCX);  // RSI = str_a
+    enc.mov_rr(X86Reg::RDI, X86Reg::RDX);  // RDI = str_b
+    // Get len_a
+    enc.mov_rr(X86Reg::RCX, X86Reg::RSI);
+    enc.call_label("__pyb_str_len");
+    enc.mov_rr(X86Reg::R12, X86Reg::RAX);  // R12 = len_a
+    // Get len_b
+    enc.mov_rr(X86Reg::RCX, X86Reg::RDI);
+    enc.call_label("__pyb_str_len");
+    enc.mov_rr(X86Reg::R13, X86Reg::RAX);  // R13 = len_b
+    // Alloc len_a + len_b + 1
+    enc.mov_rr(X86Reg::RCX, X86Reg::R12);
+    enc.add_rr(X86Reg::RCX, X86Reg::R13);
+    enc.rex_w(); enc.emit(&[0xFF, 0xC1]);   // INC RCX
+    enc.call_label("__pyb_heap_alloc");
+    enc.mov_rr(X86Reg::RBX, X86Reg::RAX);  // RBX = result ptr
+    // Copy str_a: memcpy(RBX, RSI, R12)
+    enc.xor_rr(X86Reg::RCX);               // i = 0
+    let sc_lp1 = format!("__sc_l1_{}", enc.pos());
+    let sc_d1 = format!("__sc_d1_{}", enc.pos());
+    enc.label(&sc_lp1);
+    enc.cmp_rr(X86Reg::RCX, X86Reg::R12);
+    enc.jcc(0x8D, &sc_d1);                 // JGE done1
+    enc.emit(&[0x0F, 0xB6, 0x04, 0x0E]);   // MOVZX EAX, [RSI+RCX]
+    enc.emit(&[0x88, 0x04, 0x0B]);          // MOV [RBX+RCX], AL
+    enc.rex_w(); enc.emit(&[0xFF, 0xC1]);   // INC RCX
+    enc.jmp(&sc_lp1);
+    enc.label(&sc_d1);
+    // Copy str_b: memcpy(RBX+R12, RDI, R13)
+    enc.xor_rr(X86Reg::RCX);               // j = 0
+    let sc_lp2 = format!("__sc_l2_{}", enc.pos());
+    let sc_d2 = format!("__sc_d2_{}", enc.pos());
+    enc.label(&sc_lp2);
+    enc.cmp_rr(X86Reg::RCX, X86Reg::R13);
+    enc.jcc(0x8D, &sc_d2);
+    enc.emit(&[0x0F, 0xB6, 0x04, 0x0F]);   // MOVZX EAX, [RDI+RCX]
+    // dst = RBX + R12 + RCX
+    enc.mov_rr(X86Reg::RAX, X86Reg::R12);
+    enc.add_rr(X86Reg::RAX, X86Reg::RCX);
+    // Need to reload byte since we clobbered RAX
+    enc.emit(&[0x44, 0x0F, 0xB6, 0x04, 0x0F]); // MOVZX R8D, [RDI+RCX] (use R8 as temp)
+    enc.emit(&[0x44, 0x88, 0x04, 0x03]);    // MOV [RBX+RAX], R8B
+    enc.rex_w(); enc.emit(&[0xFF, 0xC1]);
+    enc.jmp(&sc_lp2);
+    enc.label(&sc_d2);
+    // Null terminate
+    enc.mov_rr(X86Reg::RAX, X86Reg::R12);
+    enc.add_rr(X86Reg::RAX, X86Reg::R13);
+    enc.emit(&[0xC6, 0x04, 0x03, 0x00]);    // MOV byte [RBX+RAX], 0
+    enc.mov_rr(X86Reg::RAX, X86Reg::RBX);
+    enc.add_rsp(32);
+    enc.pop(X86Reg::R13);
+    enc.pop(X86Reg::R12);
+    enc.pop(X86Reg::RDI);
+    enc.pop(X86Reg::RSI);
+    enc.pop(X86Reg::RBX);
+    enc.ret();
+
+    // __pyb_str_contains: RCX=haystack, RDX=needle → RAX=1/0
+    enc.label("__pyb_str_contains");
+    enc.push(X86Reg::RBX);
+    enc.sub_rsp(32);
+    enc.call_label("__pyb_str_find");
+    // If RAX >= 0, return 1; else 0
+    enc.rex_w(); enc.emit(&[0x83, 0xF8, 0x00]); // CMP RAX, 0
+    let scon_yes = format!("__scon_y_{}", enc.pos());
+    let scon_done = format!("__scon_d_{}", enc.pos());
+    enc.jcc(0x8D, &scon_yes); // JGE → found
+    enc.xor_rr(X86Reg::RAX);
+    enc.jmp(&scon_done);
+    enc.label(&scon_yes);
+    enc.mov_imm64(X86Reg::RAX, 1);
+    enc.label(&scon_done);
+    enc.add_rsp(32);
+    enc.pop(X86Reg::RBX);
+    enc.ret();
+
+    // __pyb_str_startswith: RCX=str, RDX=prefix → RAX=1/0
+    enc.label("__pyb_str_startswith");
+    enc.push(X86Reg::RBX);
+    enc.push(X86Reg::RSI);
+    enc.push(X86Reg::RDI);
+    enc.sub_rsp(32);
+    enc.mov_rr(X86Reg::RSI, X86Reg::RCX);  // str
+    enc.mov_rr(X86Reg::RDI, X86Reg::RDX);  // prefix
+    enc.xor_rr(X86Reg::RBX);               // i = 0
+    let ssw_lp = format!("__ssw_l_{}", enc.pos());
+    let ssw_ok = format!("__ssw_ok_{}", enc.pos());
+    let ssw_no = format!("__ssw_no_{}", enc.pos());
+    enc.label(&ssw_lp);
+    // If prefix[i] == 0, all matched → success
+    enc.emit(&[0x0F, 0xB6, 0x04, 0x1F]);   // MOVZX EAX, [RDI+RBX]
+    enc.emit(&[0x84, 0xC0]);                // TEST AL, AL
+    enc.jcc(0x84, &ssw_ok);                 // JE → all prefix matched
+    // If str[i] == 0 or str[i] != prefix[i], fail
+    enc.emit(&[0x0F, 0xB6, 0x0C, 0x1E]);   // MOVZX ECX, [RSI+RBX]
+    enc.emit(&[0x38, 0xC1]);                // CMP CL, AL
+    enc.jcc(0x85, &ssw_no);                 // JNE → mismatch
+    enc.rex_w(); enc.emit(&[0xFF, 0xC3]);   // INC RBX
+    enc.jmp(&ssw_lp);
+    enc.label(&ssw_ok);
+    enc.mov_imm64(X86Reg::RAX, 1);
+    let ssw_dn = format!("__ssw_d_{}", enc.pos());
+    enc.jmp(&ssw_dn);
+    enc.label(&ssw_no);
+    enc.xor_rr(X86Reg::RAX);
+    enc.label(&ssw_dn);
+    enc.add_rsp(32);
+    enc.pop(X86Reg::RDI);
+    enc.pop(X86Reg::RSI);
+    enc.pop(X86Reg::RBX);
+    enc.ret();
+
+    // __pyb_str_endswith: RCX=str, RDX=suffix → RAX=1/0
+    enc.label("__pyb_str_endswith");
+    enc.push(X86Reg::RBX);
+    enc.push(X86Reg::RSI);
+    enc.push(X86Reg::RDI);
+    enc.push(X86Reg::R12);
+    enc.sub_rsp(32);
+    enc.mov_rr(X86Reg::RSI, X86Reg::RCX);
+    enc.mov_rr(X86Reg::RDI, X86Reg::RDX);
+    // Get str len
+    enc.call_label("__pyb_str_len");
+    enc.mov_rr(X86Reg::RBX, X86Reg::RAX);  // RBX = str_len
+    // Get suffix len
+    enc.mov_rr(X86Reg::RCX, X86Reg::RDI);
+    enc.call_label("__pyb_str_len");
+    enc.mov_rr(X86Reg::R12, X86Reg::RAX);  // R12 = suffix_len
+    // If suffix_len > str_len, return 0
+    enc.cmp_rr(X86Reg::R12, X86Reg::RBX);
+    let sew_no = format!("__sew_no_{}", enc.pos());
+    enc.jcc(0x8F, &sew_no);                // JG → suffix longer
+    // Compare: str[str_len - suffix_len ..] == suffix
+    enc.mov_rr(X86Reg::RCX, X86Reg::RBX);
+    enc.sub_rr(X86Reg::RCX, X86Reg::R12);  // RCX = start offset
+    enc.xor_rr(X86Reg::RDX);               // j = 0
+    let sew_lp = format!("__sew_l_{}", enc.pos());
+    let sew_ok = format!("__sew_ok_{}", enc.pos());
+    enc.label(&sew_lp);
+    enc.cmp_rr(X86Reg::RDX, X86Reg::R12);
+    enc.jcc(0x8D, &sew_ok);                // JGE → all matched
+    // Compare str[start+j] with suffix[j]
+    enc.mov_rr(X86Reg::RAX, X86Reg::RCX);
+    enc.add_rr(X86Reg::RAX, X86Reg::RDX);
+    enc.emit(&[0x44, 0x0F, 0xB6, 0x04, 0x06]); // MOVZX R8D, [RSI+RAX]
+    enc.emit(&[0x0F, 0xB6, 0x04, 0x17]);   // MOVZX EAX, [RDI+RDX]
+    enc.emit(&[0x44, 0x38, 0xC0]);          // CMP AL, R8B
+    enc.jcc(0x85, &sew_no);
+    enc.rex_w(); enc.emit(&[0xFF, 0xC2]);   // INC RDX
+    enc.jmp(&sew_lp);
+    enc.label(&sew_ok);
+    enc.mov_imm64(X86Reg::RAX, 1);
+    let sew_dn = format!("__sew_d_{}", enc.pos());
+    enc.jmp(&sew_dn);
+    enc.label(&sew_no);
+    enc.xor_rr(X86Reg::RAX);
+    enc.label(&sew_dn);
+    enc.add_rsp(32);
+    enc.pop(X86Reg::R12);
+    enc.pop(X86Reg::RDI);
+    enc.pop(X86Reg::RSI);
+    enc.pop(X86Reg::RBX);
+    enc.ret();
+
+    // __pyb_str_slice: RCX=str, RDX=start, R8=end → RAX=new heap substring
+    enc.label("__pyb_str_slice");
+    enc.push(X86Reg::RBX);
+    enc.push(X86Reg::RSI);
+    enc.push(X86Reg::RDI);
+    enc.push(X86Reg::R12);
+    enc.sub_rsp(32);
+    enc.mov_rr(X86Reg::RSI, X86Reg::RCX);  // str
+    enc.mov_rr(X86Reg::RDI, X86Reg::RDX);  // start
+    enc.mov_rr(X86Reg::R12, X86Reg::R8);   // end
+    // Handle negative indices: get str len
+    enc.call_label("__pyb_str_len");
+    enc.mov_rr(X86Reg::RBX, X86Reg::RAX);  // RBX = str_len
+    // If start < 0: start = max(0, str_len + start)
+    enc.rex_w(); enc.emit(&[0x85, 0xFF]);   // TEST RDI, RDI
+    let ssl_sp = format!("__ssl_sp_{}", enc.pos());
+    enc.jcc(0x89, &ssl_sp);                // JNS → start positive
+    enc.add_rr(X86Reg::RDI, X86Reg::RBX);  // start += len
+    // clamp to 0
+    enc.rex_w(); enc.emit(&[0x85, 0xFF]);
+    let ssl_s0 = format!("__ssl_s0_{}", enc.pos());
+    enc.jcc(0x89, &ssl_s0);
+    enc.xor_rr(X86Reg::RDI);
+    enc.label(&ssl_s0);
+    enc.label(&ssl_sp);
+    // If end < 0: end = str_len + end
+    enc.rex_w(); enc.emit(&[0x4D, 0x85, 0xE4]); // TEST R12, R12
+    let ssl_ep = format!("__ssl_ep_{}", enc.pos());
+    enc.jcc(0x89, &ssl_ep);
+    enc.emit(&[0x4C, 0x01, 0xE3]); // ADD RBX to R12 won't work. use mov
+    enc.mov_rr(X86Reg::RAX, X86Reg::RBX);
+    enc.emit(&[0x49, 0x01, 0xC4]);          // ADD R12, RAX
+    enc.label(&ssl_ep);
+    // Clamp end to str_len
+    enc.emit(&[0x4C, 0x39, 0xE3]);          // CMP RBX, R12
+    let ssl_ec = format!("__ssl_ec_{}", enc.pos());
+    enc.jcc(0x8D, &ssl_ec);                // JGE → end <= len, ok
+    enc.mov_rr(X86Reg::R12, X86Reg::RBX);
+    enc.label(&ssl_ec);
+    // slice_len = end - start
+    enc.mov_rr(X86Reg::RCX, X86Reg::R12);
+    enc.sub_rr(X86Reg::RCX, X86Reg::RDI);  // RCX = slice_len
+    // If slice_len <= 0, return empty string
+    enc.rex_w(); enc.emit(&[0x85, 0xC9]);
+    let ssl_emp = format!("__ssl_em_{}", enc.pos());
+    enc.jcc(0x8E, &ssl_emp);               // JLE → empty
+    // Alloc slice_len + 1
+    enc.push(X86Reg::RCX);                 // save slice_len
+    enc.rex_w(); enc.emit(&[0xFF, 0xC1]);   // INC RCX
+    enc.call_label("__pyb_heap_alloc");
+    enc.mov_rr(X86Reg::RBX, X86Reg::RAX);  // RBX = result
+    enc.pop(X86Reg::RCX);                  // restore slice_len
+    // Copy bytes: src=RSI+RDI, dst=RBX, count=RCX
+    enc.xor_rr(X86Reg::RDX);
+    let ssl_cl = format!("__ssl_cl_{}", enc.pos());
+    let ssl_cd = format!("__ssl_cd_{}", enc.pos());
+    enc.label(&ssl_cl);
+    enc.cmp_rr(X86Reg::RDX, X86Reg::RCX);
+    enc.jcc(0x8D, &ssl_cd);
+    enc.mov_rr(X86Reg::RAX, X86Reg::RDI);
+    enc.add_rr(X86Reg::RAX, X86Reg::RDX);
+    enc.emit(&[0x0F, 0xB6, 0x04, 0x06]);   // MOVZX EAX, [RSI+RAX]
+    enc.emit(&[0x88, 0x04, 0x13]);          // MOV [RBX+RDX], AL
+    enc.rex_w(); enc.emit(&[0xFF, 0xC2]);
+    enc.jmp(&ssl_cl);
+    enc.label(&ssl_cd);
+    // Null terminate
+    enc.emit(&[0xC6, 0x04, 0x0B, 0x00]);   // MOV byte [RBX+RCX], 0
+    enc.mov_rr(X86Reg::RAX, X86Reg::RBX);
+    let ssl_dn = format!("__ssl_dn_{}", enc.pos());
+    enc.jmp(&ssl_dn);
+    enc.label(&ssl_emp);
+    // Empty string: alloc 1 byte
+    enc.mov_imm64(X86Reg::RCX, 1);
+    enc.call_label("__pyb_heap_alloc");
+    enc.emit(&[0xC6, 0x00, 0x00]);          // MOV byte [RAX], 0
+    enc.label(&ssl_dn);
+    enc.add_rsp(32);
+    enc.pop(X86Reg::R12);
+    enc.pop(X86Reg::RDI);
+    enc.pop(X86Reg::RSI);
+    enc.pop(X86Reg::RBX);
+    enc.ret();
+
+    // __pyb_str_index: RCX=str, RDX=index → RAX=char as heap str (1 char)
+    enc.label("__pyb_str_index");
+    enc.push(X86Reg::RBX);
+    enc.push(X86Reg::RSI);
+    enc.sub_rsp(32);
+    enc.mov_rr(X86Reg::RSI, X86Reg::RCX);
+    enc.mov_rr(X86Reg::RBX, X86Reg::RDX);
+    // Handle negative index
+    enc.rex_w(); enc.emit(&[0x85, 0xDB]);   // TEST RBX, RBX
+    let si_pos = format!("__si_p_{}", enc.pos());
+    enc.jcc(0x89, &si_pos);
+    enc.mov_rr(X86Reg::RCX, X86Reg::RSI);
+    enc.call_label("__pyb_str_len");
+    enc.add_rr(X86Reg::RBX, X86Reg::RAX);  // index += len
+    enc.label(&si_pos);
+    // Alloc 2 bytes
+    enc.mov_imm64(X86Reg::RCX, 2);
+    enc.call_label("__pyb_heap_alloc");
+    // Copy char: result[0] = str[index]
+    enc.emit(&[0x0F, 0xB6, 0x0C, 0x1E]);   // MOVZX ECX, [RSI+RBX]
+    enc.emit(&[0x88, 0x08]);                // MOV [RAX], CL
+    enc.emit(&[0xC6, 0x40, 0x01, 0x00]);   // MOV byte [RAX+1], 0
+    enc.add_rsp(32);
+    enc.pop(X86Reg::RSI);
+    enc.pop(X86Reg::RBX);
+    enc.ret();
+
+    // __pyb_int_to_str: RAX=int64 → RAX=heap str (decimal representation)
+    enc.label("__pyb_int_to_str");
+    enc.push(X86Reg::RBX);
+    enc.push(X86Reg::RSI);
+    enc.push(X86Reg::RDI);
+    enc.sub_rsp(96);
+    enc.mov_rr(X86Reg::RSI, X86Reg::RAX);  // save number
+    // Alloc 24 bytes (max i64 = 20 digits + sign + null)
+    enc.mov_imm64(X86Reg::RCX, 24);
+    enc.call_label("__pyb_heap_alloc");
+    enc.mov_rr(X86Reg::RBX, X86Reg::RAX);  // RBX = result buffer
+    enc.mov_rr(X86Reg::RAX, X86Reg::RSI);  // restore number
+    // Handle negative
+    enc.xor_rr(X86Reg::RDI);               // RDI = write index = 0
+    enc.rex_w(); enc.emit(&[0x85, 0xC0]);
+    let its_pos = format!("__its_p_{}", enc.pos());
+    enc.jcc(0x89, &its_pos);               // JNS
+    // Write '-'
+    enc.emit(&[0xC6, 0x03, 0x2D]);          // MOV byte [RBX], '-'
+    enc.mov_imm64(X86Reg::RDI, 1);
+    enc.rex_w(); enc.emit(&[0xF7, 0xD8]);   // NEG RAX
+    enc.label(&its_pos);
+    // Handle zero
+    enc.rex_w(); enc.emit(&[0x85, 0xC0]);
+    let its_nz = format!("__its_nz_{}", enc.pos());
+    enc.jcc(0x85, &its_nz);
+    enc.emit(&[0xC6, 0x04, 0x3B, 0x30]);   // MOV byte [RBX+RDI], '0'
+    enc.rex_w(); enc.emit(&[0xFF, 0xC7]);
+    enc.emit(&[0xC6, 0x04, 0x3B, 0x00]);   // MOV byte [RBX+RDI], 0
+    enc.mov_rr(X86Reg::RAX, X86Reg::RBX);
+    let its_dn = format!("__its_dn_{}", enc.pos());
+    enc.jmp(&its_dn);
+    enc.label(&its_nz);
+    // Convert digits to stack buffer [rsp+32..rsp+52] right-to-left
+    // lea RSI, [rsp+52]
+    enc.emit(&[0x48, 0x8D, 0x74, 0x24, 0x34]); // LEA RSI, [RSP+52]
+    enc.xor_rr(X86Reg::RCX);               // digit count
+    let its_lp = format!("__its_lp_{}", enc.pos());
+    let its_ld = format!("__its_ld_{}", enc.pos());
+    enc.label(&its_lp);
+    enc.rex_w(); enc.emit(&[0x85, 0xC0]);
+    enc.jcc(0x84, &its_ld);                // JE → done
+    enc.push(X86Reg::RCX);
+    enc.xor_rr(X86Reg::RDX);
+    enc.mov_imm64(X86Reg::RCX, 10);
+    enc.rex_w(); enc.emit(&[0xF7, 0xF1]);   // DIV RCX
+    enc.rex_w(); enc.emit(&[0x83, 0xC2, 0x30]); // ADD RDX, '0'
+    enc.rex_w(); enc.emit(&[0xFF, 0xCE]);   // DEC RSI
+    enc.emit(&[0x88, 0x16]);                // MOV [RSI], DL
+    enc.pop(X86Reg::RCX);
+    enc.rex_w(); enc.emit(&[0xFF, 0xC1]);   // INC RCX
+    enc.jmp(&its_lp);
+    enc.label(&its_ld);
+    // Copy digits from stack buf to result: src=RSI, dst=RBX+RDI, count=RCX
+    enc.xor_rr(X86Reg::RDX);
+    let its_cp = format!("__its_cp_{}", enc.pos());
+    let its_ce = format!("__its_ce_{}", enc.pos());
+    enc.label(&its_cp);
+    enc.cmp_rr(X86Reg::RDX, X86Reg::RCX);
+    enc.jcc(0x8D, &its_ce);
+    enc.emit(&[0x0F, 0xB6, 0x04, 0x16]);   // MOVZX EAX, [RSI+RDX]
+    enc.mov_rr(X86Reg::RAX, X86Reg::RDI);
+    enc.add_rr(X86Reg::RAX, X86Reg::RDX);
+    // Reload byte (clobbered RAX)
+    enc.emit(&[0x44, 0x0F, 0xB6, 0x04, 0x16]); // MOVZX R8D, [RSI+RDX]
+    enc.emit(&[0x44, 0x88, 0x04, 0x03]);    // MOV [RBX+RAX], R8B
+    enc.rex_w(); enc.emit(&[0xFF, 0xC2]);
+    enc.jmp(&its_cp);
+    enc.label(&its_ce);
+    // Null terminate
+    enc.add_rr(X86Reg::RDI, X86Reg::RCX);
+    enc.emit(&[0xC6, 0x04, 0x3B, 0x00]);   // MOV byte [RBX+RDI], 0
+    enc.mov_rr(X86Reg::RAX, X86Reg::RBX);
+    enc.label(&its_dn);
+    enc.add_rsp(96);
+    enc.pop(X86Reg::RDI);
+    enc.pop(X86Reg::RSI);
+    enc.pop(X86Reg::RBX);
+    enc.ret();
+
+    // ══════════════════════════════════════════════════════════
+    // v4.5 — list completo runtime stubs
+    // ══════════════════════════════════════════════════════════
+
+    // __pyb_list_pop: RCX=list_ptr → RAX=last element (removes it)
+    enc.label("__pyb_list_pop");
+    // len = [RCX+8], if len == 0 return 0
+    enc.emit(&[0x48, 0x8B, 0x41, 0x08]);   // MOV RAX, [RCX+8] (len)
+    enc.rex_w(); enc.emit(&[0x85, 0xC0]);
+    let lp_empty = format!("__lp_em_{}", enc.pos());
+    enc.jcc(0x84, &lp_empty);              // JE → empty
+    // len--
+    enc.rex_w(); enc.emit(&[0xFF, 0xC8]);   // DEC RAX
+    enc.emit(&[0x48, 0x89, 0x41, 0x08]);   // MOV [RCX+8], RAX (new len)
+    // result = data_ptr[new_len]
+    enc.mov_rr(X86Reg::RDX, X86Reg::RAX);  // index = new len
+    enc.emit(&[0x48, 0x8B, 0x01]);          // MOV RAX, [RCX] (data_ptr)
+    enc.emit(&[0x48, 0x8B, 0x04, 0xD0]);   // MOV RAX, [RAX+RDX*8]
+    let lp_dn = format!("__lp_dn_{}", enc.pos());
+    enc.jmp(&lp_dn);
+    enc.label(&lp_empty);
+    enc.xor_rr(X86Reg::RAX);
+    enc.label(&lp_dn);
+    enc.ret();
+
+    // __pyb_list_reverse: RCX=list_ptr → void (in-place)
+    enc.label("__pyb_list_reverse");
+    enc.push(X86Reg::RBX);
+    enc.push(X86Reg::RSI);
+    enc.push(X86Reg::RDI);
+    enc.mov_rr(X86Reg::RBX, X86Reg::RCX);
+    enc.emit(&[0x48, 0x8B, 0x03]);          // MOV RAX, [RBX] (data_ptr)
+    enc.mov_rr(X86Reg::RSI, X86Reg::RAX);   // RSI = data_ptr
+    enc.emit(&[0x48, 0x8B, 0x43, 0x08]);    // MOV RAX, [RBX+8] (len)
+    enc.rex_w(); enc.emit(&[0xFF, 0xC8]);    // DEC RAX
+    enc.mov_rr(X86Reg::RDI, X86Reg::RAX);   // RDI = right = len-1
+    enc.xor_rr(X86Reg::RCX);                // RCX = left = 0
+    let lr_lp = format!("__lr_lp_{}", enc.pos());
+    let lr_dn = format!("__lr_dn_{}", enc.pos());
+    enc.label(&lr_lp);
+    enc.cmp_rr(X86Reg::RCX, X86Reg::RDI);
+    enc.jcc(0x8D, &lr_dn);                  // JGE → done
+    // swap data[left] and data[right]
+    enc.emit(&[0x48, 0x8B, 0x04, 0xCE]);    // MOV RAX, [RSI+RCX*8]
+    enc.emit(&[0x48, 0x8B, 0x14, 0xFE]);    // MOV RDX, [RSI+RDI*8]
+    enc.emit(&[0x48, 0x89, 0x14, 0xCE]);    // MOV [RSI+RCX*8], RDX
+    enc.emit(&[0x48, 0x89, 0x04, 0xFE]);    // MOV [RSI+RDI*8], RAX
+    enc.rex_w(); enc.emit(&[0xFF, 0xC1]);    // INC RCX
+    enc.rex_w(); enc.emit(&[0xFF, 0xCF]);    // DEC RDI
+    enc.jmp(&lr_lp);
+    enc.label(&lr_dn);
+    enc.pop(X86Reg::RDI);
+    enc.pop(X86Reg::RSI);
+    enc.pop(X86Reg::RBX);
+    enc.ret();
+
+    // __pyb_list_sort: RCX=list_ptr → void (insertion sort in-place)
+    enc.label("__pyb_list_sort");
+    enc.push(X86Reg::RBX);
+    enc.push(X86Reg::RSI);
+    enc.push(X86Reg::RDI);
+    enc.push(X86Reg::R12);
+    enc.push(X86Reg::R13);
+    enc.mov_rr(X86Reg::RBX, X86Reg::RCX);
+    enc.emit(&[0x48, 0x8B, 0x33]);          // MOV RSI, [RBX] (data_ptr)
+    enc.emit(&[0x48, 0x8B, 0x7B, 0x08]);    // MOV RDI, [RBX+8] (len)
+    enc.mov_imm64(X86Reg::R12, 1);          // i = 1
+    let ls_out = format!("__ls_o_{}", enc.pos());
+    let ls_odn = format!("__ls_od_{}", enc.pos());
+    enc.label(&ls_out);
+    enc.cmp_rr(X86Reg::R12, X86Reg::RDI);
+    enc.jcc(0x8D, &ls_odn);                 // JGE → done
+    // key = data[i]
+    enc.emit(&[0x4E, 0x8B, 0x2C, 0xE6]);    // MOV R13, [RSI+R12*8]  (key)
+    // j = i - 1
+    enc.mov_rr(X86Reg::RCX, X86Reg::R12);
+    enc.rex_w(); enc.emit(&[0xFF, 0xC9]);    // DEC RCX (j = i-1)
+    let ls_in = format!("__ls_i_{}", enc.pos());
+    let ls_idn = format!("__ls_id_{}", enc.pos());
+    enc.label(&ls_in);
+    // while j >= 0 && data[j] > key
+    enc.rex_w(); enc.emit(&[0x83, 0xF9, 0x00]); // CMP RCX, 0
+    enc.jcc(0x8C, &ls_idn);                 // JL → done inner
+    enc.emit(&[0x48, 0x8B, 0x04, 0xCE]);    // MOV RAX, [RSI+RCX*8]
+    enc.emit(&[0x4C, 0x39, 0xE8]);          // CMP RAX, R13
+    enc.jcc(0x8E, &ls_idn);                 // JLE → data[j] <= key, done
+    // data[j+1] = data[j]
+    enc.mov_rr(X86Reg::RDX, X86Reg::RCX);
+    enc.rex_w(); enc.emit(&[0xFF, 0xC2]);    // INC RDX
+    enc.emit(&[0x48, 0x89, 0x04, 0xD6]);    // MOV [RSI+RDX*8], RAX
+    enc.rex_w(); enc.emit(&[0xFF, 0xC9]);    // DEC RCX
+    enc.jmp(&ls_in);
+    enc.label(&ls_idn);
+    // data[j+1] = key
+    enc.mov_rr(X86Reg::RDX, X86Reg::RCX);
+    enc.rex_w(); enc.emit(&[0xFF, 0xC2]);    // INC RDX
+    enc.emit(&[0x4C, 0x89, 0x2C, 0xD6]);    // MOV [RSI+RDX*8], R13
+    enc.emit(&[0x49, 0xFF, 0xC4]);           // INC R12
+    enc.jmp(&ls_out);
+    enc.label(&ls_odn);
+    enc.pop(X86Reg::R13);
+    enc.pop(X86Reg::R12);
+    enc.pop(X86Reg::RDI);
+    enc.pop(X86Reg::RSI);
+    enc.pop(X86Reg::RBX);
+    enc.ret();
+
+    // __pyb_list_contains: RCX=list_ptr, RDX=value → RAX=1/0
+    enc.label("__pyb_list_contains");
+    enc.push(X86Reg::RBX);
+    enc.push(X86Reg::RSI);
+    enc.push(X86Reg::RDI);
+    enc.mov_rr(X86Reg::RBX, X86Reg::RCX);
+    enc.mov_rr(X86Reg::RSI, X86Reg::RDX);  // value to find
+    enc.emit(&[0x48, 0x8B, 0x7B, 0x08]);    // MOV RDI, [RBX+8] (len)
+    enc.emit(&[0x48, 0x8B, 0x03]);           // MOV RAX, [RBX] (data_ptr)
+    enc.mov_rr(X86Reg::RBX, X86Reg::RAX);
+    enc.xor_rr(X86Reg::RCX);                // i = 0
+    let lcon_lp = format!("__lc_lp_{}", enc.pos());
+    let lcon_fo = format!("__lc_fo_{}", enc.pos());
+    let lcon_nf = format!("__lc_nf_{}", enc.pos());
+    enc.label(&lcon_lp);
+    enc.cmp_rr(X86Reg::RCX, X86Reg::RDI);
+    enc.jcc(0x8D, &lcon_nf);
+    enc.emit(&[0x48, 0x8B, 0x04, 0xCB]);    // MOV RAX, [RBX+RCX*8]
+    enc.cmp_rr(X86Reg::RAX, X86Reg::RSI);
+    enc.jcc(0x84, &lcon_fo);                 // JE → found
+    enc.rex_w(); enc.emit(&[0xFF, 0xC1]);
+    enc.jmp(&lcon_lp);
+    enc.label(&lcon_fo);
+    enc.mov_imm64(X86Reg::RAX, 1);
+    let lcon_dn = format!("__lc_dn_{}", enc.pos());
+    enc.jmp(&lcon_dn);
+    enc.label(&lcon_nf);
+    enc.xor_rr(X86Reg::RAX);
+    enc.label(&lcon_dn);
+    enc.pop(X86Reg::RDI);
+    enc.pop(X86Reg::RSI);
+    enc.pop(X86Reg::RBX);
+    enc.ret();
+
+    // __pyb_list_print: RCX=list_ptr → prints [a, b, c] format
+    enc.label("__pyb_list_print");
+    enc.push(X86Reg::RBX);
+    enc.push(X86Reg::RSI);
+    enc.push(X86Reg::RDI);
+    enc.sub_rsp(32);
+    enc.mov_rr(X86Reg::RBX, X86Reg::RCX);
+    // Print '['
+    enc.add_data_string("__v45_lbracket", "[");
+    enc.lea_rax_data("__v45_lbracket");
+    enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+    enc.mov_imm64(X86Reg::RDX, 1);
+    enc.call_label("__pyb_print_str");
+    // Loop elements
+    enc.emit(&[0x48, 0x8B, 0x7B, 0x08]);    // MOV RDI, [RBX+8] (len)
+    enc.xor_rr(X86Reg::RSI);                // i = 0
+    let lpr_lp = format!("__lpr_l_{}", enc.pos());
+    let lpr_dn = format!("__lpr_d_{}", enc.pos());
+    enc.label(&lpr_lp);
+    enc.cmp_rr(X86Reg::RSI, X86Reg::RDI);
+    enc.jcc(0x8D, &lpr_dn);
+    // Print ", " if not first
+    enc.rex_w(); enc.emit(&[0x85, 0xF6]);    // TEST RSI, RSI
+    let lpr_noc = format!("__lpr_nc_{}", enc.pos());
+    enc.jcc(0x84, &lpr_noc);                // JE → first, no comma
+    enc.add_data_string("__v45_comma", ", ");
+    enc.lea_rax_data("__v45_comma");
+    enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+    enc.mov_imm64(X86Reg::RDX, 2);
+    enc.call_label("__pyb_print_str");
+    enc.label(&lpr_noc);
+    // Print element as int
+    enc.emit(&[0x48, 0x8B, 0x03]);          // MOV RAX, [RBX] (data_ptr)
+    enc.emit(&[0x48, 0x8B, 0x04, 0xF0]);    // MOV RAX, [RAX+RSI*8]
+    enc.call_label("__pyb_itoa");
+    enc.rex_w(); enc.emit(&[0xFF, 0xC6]);    // INC RSI
+    enc.jmp(&lpr_lp);
+    enc.label(&lpr_dn);
+    // Print ']'
+    enc.add_data_string("__v45_rbracket", "]");
+    enc.lea_rax_data("__v45_rbracket");
+    enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+    enc.mov_imm64(X86Reg::RDX, 1);
+    enc.call_label("__pyb_print_str");
+    enc.add_rsp(32);
+    enc.pop(X86Reg::RDI);
+    enc.pop(X86Reg::RSI);
+    enc.pop(X86Reg::RBX);
+    enc.ret();
+
+    // __pyb_dict_contains: RCX=dict_ptr, RDX=key → RAX=1/0
+    enc.label("__pyb_dict_contains");
+    enc.push(X86Reg::RBX);
+    enc.sub_rsp(32);
+    enc.call_label("__pyb_dict_get");
+    // dict_get returns 0 for not found — but 0 could be a valid value
+    // For simplicity, treat 0 as not found (matches current dict behavior)
+    enc.rex_w(); enc.emit(&[0x85, 0xC0]);
+    let dc_yes = format!("__dc_y_{}", enc.pos());
+    let dc_dn = format!("__dc_d_{}", enc.pos());
+    enc.jcc(0x85, &dc_yes);                 // JNE → found
+    enc.xor_rr(X86Reg::RAX);
+    enc.jmp(&dc_dn);
+    enc.label(&dc_yes);
+    enc.mov_imm64(X86Reg::RAX, 1);
+    enc.label(&dc_dn);
     enc.add_rsp(32);
     enc.pop(X86Reg::RBX);
     enc.ret();
