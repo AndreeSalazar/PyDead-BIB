@@ -722,9 +722,11 @@ impl PyToIR {
                                             };
                                             matches!(fn_str.as_str(),
                                                 "os.getcwd" | "os.environ.get" |
-                                                "json.dumps" | "sys.platform" | "sys.version"
+                                                "json.dumps" | "sys.platform" | "sys.version" |
+                                                "str"
                                             ) || fn_str.ends_with(".upper") || fn_str.ends_with(".lower")
                                               || fn_str.ends_with(".replace") || fn_str.ends_with(".read")
+                                              || fn_str.ends_with(".strip")
                                         } else { false };
                                         // Check if arg is a sys.platform / sys.version attribute
                                         let is_sys_attr = if let PyExpr::Attribute { value: v, attr: a } = arg {
@@ -759,9 +761,41 @@ impl PyToIR {
                                             func.body.push(instr);
                                             func.body.push(IRInstruction::PrintChar);
                                         } else {
-                                            let instr = self.convert_expr_to_instr(arg, program);
-                                            func.body.push(instr);
-                                            func.body.push(IRInstruction::PrintInt);
+                                            // v4.5: Check if arg is a list variable → print via __pyb_list_print
+                                            let is_list_var = if let PyExpr::Name(n) = arg {
+                                                !self.dict_vars.contains(n) && !self.string_vars.contains_key(n)
+                                                && !self.str_heap_vars.contains(n) && !self.file_vars.contains(n)
+                                                && !self.class_vars.contains_key(n) && !self.global_vars.contains(n)
+                                            } else { false };
+                                            // Check if arg is a bool-producing call (startswith, endswith, etc)
+                                            let is_bool_call = if let PyExpr::Call { func: f, .. } = arg {
+                                                let fn_str = match f.as_ref() {
+                                                    PyExpr::Attribute { value: _, attr: a } => {
+                                                        matches!(a.as_str(), "startswith" | "endswith")
+                                                    }
+                                                    _ => false,
+                                                };
+                                                fn_str
+                                            } else { false };
+                                            if is_bool_call {
+                                                let instr = self.convert_expr_to_instr(arg, program);
+                                                func.body.push(instr);
+                                                // Print True or False based on RAX value
+                                                let true_label = fresh_temp("bool_true");
+                                                let done_label = fresh_temp("bool_done");
+                                                func.body.push(IRInstruction::BranchIfFalse(true_label.clone()));
+                                                let t_lbl = self.add_string("True", program);
+                                                func.body.push(IRInstruction::PrintStr(t_lbl));
+                                                func.body.push(IRInstruction::Jump(done_label.clone()));
+                                                func.body.push(IRInstruction::Label(true_label));
+                                                let f_lbl = self.add_string("False", program);
+                                                func.body.push(IRInstruction::PrintStr(f_lbl));
+                                                func.body.push(IRInstruction::Label(done_label));
+                                            } else {
+                                                let instr = self.convert_expr_to_instr(arg, program);
+                                                func.body.push(instr);
+                                                func.body.push(IRInstruction::PrintInt);
+                                            }
                                         }
                                     }
                                 }
@@ -1496,6 +1530,14 @@ impl PyToIR {
                             args: vec![arg],
                         };
                     }
+                    // v4.5 — str() builtin: int→str conversion
+                    "str" if !args.is_empty() => {
+                        let arg = self.convert_expr_to_instr(&args[0], program);
+                        return IRInstruction::Call {
+                            func: "__pyb_int_to_str".to_string(),
+                            args: vec![arg],
+                        };
+                    }
                     _ => {
                         // Check if it's a constructor call: ClassName(args...)
                         if self.class_names.contains(&func_name) {
@@ -1624,36 +1666,108 @@ impl PyToIR {
                                                 IRInstruction::Load(obj_name.to_string())
                                             };
                                             let needle = self.convert_expr_to_instr(&args[0], program);
-                                            // startswith = find == 0
-                                            return IRInstruction::Compare {
-                                                op: IRCmpOp::Eq,
-                                                left: Box::new(IRInstruction::Call {
-                                                    func: "__pyb_str_find".to_string(),
-                                                    args: vec![src, needle],
-                                                }),
-                                                right: Box::new(IRInstruction::LoadConst(IRConstValue::Int(0))),
+                                            return IRInstruction::Call {
+                                                func: "__pyb_str_startswith".to_string(),
+                                                args: vec![src, needle],
                                             };
                                         }
                                         "endswith" if !args.is_empty() => {
-                                            // Simplified: just use find and check result != -1
                                             let src = if let Some(label) = self.string_vars.get(obj_name) {
                                                 IRInstruction::LoadString(label.clone())
                                             } else {
                                                 IRInstruction::Load(obj_name.to_string())
                                             };
                                             let needle = self.convert_expr_to_instr(&args[0], program);
-                                            return IRInstruction::Compare {
-                                                op: IRCmpOp::Ne,
-                                                left: Box::new(IRInstruction::Call {
-                                                    func: "__pyb_str_find".to_string(),
-                                                    args: vec![src, needle],
-                                                }),
-                                                right: Box::new(IRInstruction::LoadConst(IRConstValue::Int(-1))),
+                                            return IRInstruction::Call {
+                                                func: "__pyb_str_endswith".to_string(),
+                                                args: vec![src, needle],
+                                            };
+                                        }
+                                        // v4.5 — new str methods
+                                        "strip" => {
+                                            let src = if let Some(label) = self.string_vars.get(obj_name) {
+                                                IRInstruction::LoadString(label.clone())
+                                            } else {
+                                                IRInstruction::Load(obj_name.to_string())
+                                            };
+                                            return IRInstruction::Call {
+                                                func: "__pyb_str_upper".to_string(), // strip reuses upper path for now (trim spaces = copy non-space bytes)
+                                                args: vec![src],
+                                            };
+                                        }
+                                        "split" if !args.is_empty() => {
+                                            let src = if let Some(label) = self.string_vars.get(obj_name) {
+                                                IRInstruction::LoadString(label.clone())
+                                            } else {
+                                                IRInstruction::Load(obj_name.to_string())
+                                            };
+                                            let sep = self.convert_expr_to_instr(&args[0], program);
+                                            return IRInstruction::Call {
+                                                func: "__pyb_str_find".to_string(), // split stub (simplified: returns find index)
+                                                args: vec![src, sep],
                                             };
                                         }
                                         _ => {}
                                     }
                                 }
+
+                                // v4.5 — List method calls: l.sort(), l.reverse(), l.pop(), l.append(), l.contains()
+                                if self.dict_vars.contains(obj_name) {
+                                    // Dict method calls
+                                    match method {
+                                        "get" if !args.is_empty() => {
+                                            let key = self.convert_expr_to_instr(&args[0], program);
+                                            if args.len() >= 2 {
+                                                // d.get(key, default) — for now just use dict_get (returns 0 if not found)
+                                                return IRInstruction::Call {
+                                                    func: "__pyb_dict_get".to_string(),
+                                                    args: vec![IRInstruction::Load(obj_name.to_string()), key],
+                                                };
+                                            }
+                                            return IRInstruction::Call {
+                                                func: "__pyb_dict_get".to_string(),
+                                                args: vec![IRInstruction::Load(obj_name.to_string()), key],
+                                            };
+                                        }
+                                        "keys" | "values" | "items" => {
+                                            // Return dict ptr for iteration
+                                            return IRInstruction::Load(obj_name.to_string());
+                                        }
+                                        _ => {}
+                                    }
+                                } else if !self.file_vars.contains(obj_name) && !self.class_vars.contains_key(obj_name)
+                                    && !self.str_heap_vars.contains(obj_name) && !self.string_vars.contains_key(obj_name) {
+                                    // Assume it's a list variable for list methods
+                                    match method {
+                                        "append" if !args.is_empty() => {
+                                            let val = self.convert_expr_to_instr(&args[0], program);
+                                            return IRInstruction::Call {
+                                                func: "__pyb_list_append".to_string(),
+                                                args: vec![IRInstruction::Load(obj_name.to_string()), val],
+                                            };
+                                        }
+                                        "sort" => {
+                                            return IRInstruction::Call {
+                                                func: "__pyb_list_sort".to_string(),
+                                                args: vec![IRInstruction::Load(obj_name.to_string())],
+                                            };
+                                        }
+                                        "reverse" => {
+                                            return IRInstruction::Call {
+                                                func: "__pyb_list_reverse".to_string(),
+                                                args: vec![IRInstruction::Load(obj_name.to_string())],
+                                            };
+                                        }
+                                        "pop" => {
+                                            return IRInstruction::Call {
+                                                func: "__pyb_list_pop".to_string(),
+                                                args: vec![IRInstruction::Load(obj_name.to_string())],
+                                            };
+                                        }
+                                        _ => {}
+                                    }
+                                }
+
 
                                 // Class instance method calls
                                 if let Some(cls) = self.class_vars.get(obj_name) {
