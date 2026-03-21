@@ -1,192 +1,291 @@
-# 📊 Reporte de Gaps — PyDead-BIB v4.5
-> Estado actual vs Python estándar. Prioridades para v4.6+
+# PyDead-BIB — Reporte de Estado y Puntos Faltantes
+
+> **Objetivo:** Python + C ABI nativo — JIT KILLER v2.0 completo
+> **Fecha:** 2026-03-20
+> **Versión actual:** v4.0
 
 ---
 
-## ✅ Implementado (v4.5)
+## Resumen Ejecutivo
 
-| Feature | Estado |
-|---------|--------|
-| int, float, bool literals | ✅ |
-| str: upper, lower, find, replace, startswith, endswith, strip, split | ✅ |
-| str + str concat | ✅ |
-| str * N repeat | ✅ |
-| str() int→str | ✅ |
-| list: sort, reverse, pop, append, len | ✅ |
-| dict: get, len, set, keys/values/items | ✅ |
-| `x in list/str/dict` | ✅ |
-| `x not in` | ✅ |
-| f-strings | ✅ |
-| for/while loops | ✅ |
-| if/elif/else | ✅ |
-| def, return | ✅ |
-| class + __init__ + self | ✅ |
-| inheritance | ✅ |
-| import math/os/sys/random/json | ✅ |
-| try/except | ✅ |
-| with/context manager (básico) | ✅ |
-| async/await (básico) | ✅ |
-| generators (básico) | ✅ |
-| JIT 2.0 in-memory | ✅ |
-| x86-64 nativo Windows | ✅ |
+PyDead-BIB compila Python → x86-64 nativo con soporte parcial de C ABI via `ctypes`. Este reporte documenta **todos los puntos de Python que faltan** para alcanzar el objetivo de JIT 2.0 completo con integración C ABI real.
 
 ---
 
-## 🔴 CRÍTICO — Faltan para uso real
+## 1. Estado Actual del Frontend Python
 
-### 1. Dict con claves tipo `str`
-**Estado:** Clave `"abc"` en dict crashea en runtime  
-**Causa:** El hasher de `__pyb_dict_set`/`__pyb_dict_get` usa el puntero de la cadena, no su contenido  
-**Fix necesario:** Implementar `__pyb_str_hash` (djb2 o FNV-1a) + comparar por valor en `dict_get`  
-**Impacto:** Alto — casi todos los dicts reales usan str keys  
-```python
-# FALLA ahora:
-d = {"nombre": "Andre", "ciudad": "Lima"}
-print(d["nombre"])
-```
+### ✅ IMPLEMENTADO (Parser + AST)
 
-### 2. for x in list (iteración real)
-**Estado:** `for i in range(n)` funciona. `for x in my_list` no genera IR correcto  
-**Causa:** El IR generator no emite `__pyb_list_get` en el loop body para listas heap  
-**Fix necesario:** Detectar `for x in list_var` y generar: `i=0; while i < len: x = list[i]; i++`  
-**Impacto:** Alto — patrón Python más común  
-```python
-# FALLA ahora:
-nums = [10, 20, 30]
-for n in nums:
-    print(n)
-```
+| Característica | Archivo | Estado |
+|---|---|---|
+| Tipos básicos (`int`, `float`, `str`, `bool`, `None`) | `py_ast.rs` | ✅ Completo |
+| Literales (int, float, string, bytes, f-string) | `py_ast.rs` | ✅ Completo |
+| Operadores binarios (+, -, *, /, //, %, **) | `py_ast.rs` | ✅ Completo |
+| Operadores bitwise (&, \|, ^, <<, >>) | `py_ast.rs` | ✅ Completo |
+| Comparaciones (==, !=, <, >, <=, >=, is, in) | `py_ast.rs` | ✅ Completo |
+| Control de flujo (if/elif/else, while, for) | `py_parser.rs` | ✅ Completo |
+| Funciones (def, return, params, defaults) | `py_parser.rs` | ✅ Completo |
+| Clases (class, __init__, self, herencia) | `py_parser.rs` | ✅ Completo |
+| Excepciones (try/except/finally/raise) | `py_parser.rs` | ✅ Completo |
+| Context managers (with) | `py_parser.rs` | ✅ Completo |
+| Match/case (3.10+) | `py_parser.rs` | ✅ Completo |
+| Walrus operator (:=) | `py_ast.rs` | ✅ Completo |
+| List/Dict/Set comprehensions | `py_ast.rs` | ✅ Completo |
+| Lambda expressions | `py_ast.rs` | ✅ Completo |
+| Decorators | `py_parser.rs` | ✅ Completo |
+| async/await (parser) | `py_parser.rs` | ✅ Completo |
+| yield/yield from (parser) | `py_ast.rs` | ✅ Completo |
+| Type annotations | `py_ast.rs` | ✅ Completo |
+| f-strings con expressions | `py_ast.rs` | ✅ Completo |
+| Slicing [start:stop:step] | `py_ast.rs` | ✅ Completo |
+| *args, **kwargs | `py_ast.rs` | ✅ Completo |
+| global/nonlocal | `py_parser.rs` | ✅ Completo |
 
-### 3. print(list) — formato `[a, b, c]`
-**Estado:** `print(my_list)` imprime como int (el puntero)  
-**Causa:** El print handler no detecta variables lista para llamar `__pyb_list_print`  
-**Fix necesario:** Marcar list vars en `list_vars` set y detectar en print handler  
-**Impacto:** Alto — debugging muy difícil sin esto  
+### ⚠️ PARCIALMENTE IMPLEMENTADO (IR + Codegen)
 
-### 4. Exceptions con mensaje real
-**Estado:** `raise ValueError("msg")` funciona pero `except ValueError as e: print(e)` no captura msg  
-**Causa:** El runtime de excepciones no pasa el mensaje al handler  
-**Impacto:** Medio-alto
-
-### 5. str.format() y % formatting
-**Estado:** f-strings funcionan. `"hola {}".format(x)` no  
-**Causa:** No hay stub para `__pyb_str_format`  
-**Impacto:** Medio
+| Característica | Estado IR | Estado Codegen | Notas |
+|---|---|---|---|
+| async/await | ✅ IR existe | ⚠️ Stub | `CoroutineCreate/Resume/Yield` — sin state machine real |
+| generators/yield | ✅ IR existe | ⚠️ Stub | `GeneratorCreate/Next/Send` — sin iteración real |
+| List comprehensions | ✅ IR existe | ⚠️ Parcial | Solo `range()`, sin iterables arbitrarios |
+| Dict comprehensions | ⚠️ Parser | ❌ No IR | Falta conversión a IR |
+| Set comprehensions | ⚠️ Parser | ❌ No IR | Falta conversión a IR |
+| Generator expressions | ⚠️ Parser | ❌ No IR | Falta conversión a IR |
+| Lambda | ✅ Parser | ⚠️ Parcial | Solo lambdas simples |
+| @property | ✅ IR existe | ⚠️ Stub | `PropertyGet/Set` — sin descriptor real |
+| @lru_cache | ✅ IR existe | ⚠️ Stub | `LruCacheCheck/Store` — sin cache real |
+| @staticmethod/@classmethod | ⚠️ Parser | ⚠️ Parcial | Dispatch básico |
+| Multiple inheritance | ⚠️ Parser | ❌ No | Solo single inheritance |
+| Metaclasses | ❌ No | ❌ No | No soportado |
+| __slots__ | ❌ No | ❌ No | No soportado |
+| __getattr__/__setattr__ | ❌ No | ❌ No | No soportado |
 
 ---
 
-## 🟡 IMPORTANTE — Para completar tipos
+## 2. C ABI / FFI — Estado Actual
 
-### 6. str.split() retorna lista real
-**Estado:** `split()` llama a `str_find` (retorna índice, no lista)  
-**Fix:** Implementar `__pyb_str_split` que retorna una `PyList` de heap strings  
+### ✅ IMPLEMENTADO
+
 ```python
-# INCORRECTO ahora:
-partes = "a,b,c".split(",")  # retorna int, no lista
+# Funciona (básico):
+import ctypes
+lib = ctypes.CDLL("mi_lib.dll")    # → __pyb_dll_load stub
+ctypes.c_int(42)                    # → passthrough
+ctypes.c_double(3.14)               # → passthrough
 ```
 
-### 7. str.join()
-**Estado:** No implementado  
-**Fix:** `__pyb_str_join(sep, list_ptr)` → heap string con separadores  
-```python
-resultado = ",".join(["a", "b", "c"])  # "a,b,c"
-```
+### ❌ FALTANTE para C ABI Completo
 
-### 8. list comprehensions con expresión real
-**Estado:** `[x for x in range(n)]` funciona básico  
-**No funciona:** `[x*2 for x in lista if x > 0]`  
-**Fix:** Completar IR gen para comprehensions con condición y transformación  
+| Característica | Prioridad | Descripción |
+|---|---|---|
+| **LoadLibraryA real** | 🔴 CRÍTICO | `__pyb_dll_load` es stub (retorna 0) |
+| **GetProcAddress real** | 🔴 CRÍTICO | `DllGetProc` no resuelve símbolos |
+| **Llamada a función C** | 🔴 CRÍTICO | `DllCall` no ejecuta función real |
+| **ctypes.Structure** | 🔴 CRÍTICO | No soportado — necesario para structs C |
+| **ctypes.POINTER** | 🔴 CRÍTICO | No soportado — necesario para punteros |
+| **ctypes.byref** | 🟡 ALTO | No soportado — paso por referencia |
+| **ctypes.c_char_p** | 🟡 ALTO | No soportado — strings C |
+| **ctypes.c_void_p** | 🟡 ALTO | No soportado — punteros genéricos |
+| **ctypes.Array** | 🟡 ALTO | No soportado — arrays C |
+| **ctypes.callback** | 🟢 MEDIO | No soportado — callbacks Python→C |
+| **Calling conventions** | 🟢 MEDIO | Solo cdecl, falta stdcall/fastcall |
 
-### 9. AugAssign `s += "texto"` para strings
-**Estado:** `+=` para ints funciona. Para strings no ruta a `str_concat`  
-**Fix:** Detectar string vars en AugAssign Add y emitir `__pyb_str_concat`  
-```python
-s = "Hola"
-s += ", Mundo"  # INCORRECTO: hace Add numérico
-```
+### Código IR Actual (stub)
 
-### 10. Slicing `s[1:5]`, `l[2:]`
-**Estado:** `__pyb_str_slice` existe pero `s[1:5]` en AST no se rutea a él  
-**Fix:** Detectar `PyExpr::Subscript` con slice range y emitir `str_slice` o `list_slice`  
-```python
-sub = s[0:5]   # FALLA
-sub = s[-3:]   # FALLA
-```
-
-### 11. `len()` sobre strings
-**Estado:** `len(str_var)` llama a `__builtin_len` (pensando que es lista)  
-**Fix:** Detectar string vars en `len()` y llamar `__pyb_str_len` en su lugar  
-```python
-print(len("hola"))  # INCORRECTO: usa list_len que lee el header de lista
+```rust
+// src/rust/backend/isa.rs:1192-1195
+// __pyb_dll_load: RCX=path_ptr → RAX = module handle (stub)
+enc.label("__pyb_dll_load");
+enc.xor_rr(X86Reg::RAX); // Return 0 (stub) ← PROBLEMA
+enc.ret();
 ```
 
 ---
 
-## 🟢 MEJORAS — Para mayor compatibilidad
+## 3. JIT KILLER v2.0 — Puntos Faltantes
 
-### 12. Múltiples valores de retorno con tuple
-**Estado:** Una función puede retornar un tuple pero la asignación `a, b = func()` no desempaqueta heap tuples  
+### ✅ IMPLEMENTADO
 
-### 13. Default args en funciones
-**Estado:** `def f(x, y=10)` no compila — el parser lo acepta pero el IR falla  
+| Mejora | Estado | Archivo |
+|---|---|---|
+| Thermal Cache (FNV-1a) | ✅ | `jit.rs:16-42` |
+| CPU Feature Detection (CPUID) | ✅ | `jit.rs:44-133` |
+| Pre-Resolved Dispatch Table | ✅ | `jit.rs` |
+| VirtualAlloc Executor | ✅ | `jit.rs` |
 
-### 14. *args y **kwargs
-**Estado:** No implementado  
+### ❌ FALTANTE para JIT 2.0 Completo
 
-### 15. lambda
-**Estado:** No implementado  
-**Fix:** Convertir lambda a función anónima en IR  
+| Característica | Prioridad | Descripción |
+|---|---|---|
+| **Parallel Compilation (rayon)** | 🟡 ALTO | Arquitectura lista, no implementado |
+| **Incremental Compilation** | 🟡 ALTO | Recompilar solo funciones cambiadas |
+| **Hot Path Detection** | 🟢 MEDIO | Detectar loops calientes para optimizar |
+| **Inline Caching** | 🟢 MEDIO | Cache de tipos para dispatch rápido |
+| **Deoptimization** | 🟢 MEDIO | Fallback cuando asunciones fallan |
+| **Profile-Guided Optimization** | 🟢 MEDIO | Optimizar basado en ejecución real |
+| **Code Patching** | 🟢 MEDIO | Modificar código en caliente |
 
-### 16. Closures reales
-**Estado:** Funciones anidadas no capturan scope exterior  
+---
 
-### 17. `__str__`, `__repr__`, `__len__` en clases
-**Estado:** No implementado — métodos dunder no se despachan  
+## 4. Standard Library — Estado
 
-### 18. `type()`, `isinstance()`
-**Estado:** `isinstance()` compilado pero siempre retorna False  
+### ✅ IMPLEMENTADO
 
-### 19. `int()`, `float()`, `bool()` builtins
-**Estado:** `str()` implementado. Los otros no — necesitan stubs  
-```python
-x = int("42")    # FALLA
-y = float("3.14")  # FALLA
+| Módulo | Funciones | Estado |
+|---|---|---|
+| `math` | sqrt, sin, cos, log, floor, ceil, pi, e | ✅ SIMD inline |
+| `os` | getcwd, path.exists, mkdir, remove, rename, getpid, environ.get | ✅ Win32 API |
+| `sys` | platform, version, maxsize, exit | ✅ Constantes |
+| `random` | seed, randint, random | ✅ xorshift64 |
+| `json` | loads, dumps | ⚠️ Stubs |
+| `open()` | read, write, close | ✅ CreateFileA |
+
+### ❌ FALTANTE
+
+| Módulo | Prioridad | Funciones Necesarias |
+|---|---|---|
+| `struct` | 🔴 CRÍTICO | pack, unpack — necesario para C ABI |
+| `array` | 🔴 CRÍTICO | array('f', [...]) — arrays tipados |
+| `collections` | 🟡 ALTO | deque, Counter, defaultdict |
+| `itertools` | 🟡 ALTO | chain, zip_longest, product |
+| `functools` | 🟡 ALTO | reduce, partial (lru_cache ya existe) |
+| `re` | 🟢 MEDIO | Regex básico |
+| `datetime` | 🟢 MEDIO | date, time, datetime |
+| `pathlib` | 🟢 MEDIO | Path operations |
+| `typing` | 🟢 BAJO | Runtime typing (ya hay type hints) |
+
+---
+
+## 5. Optimizaciones — Estado
+
+### ✅ IMPLEMENTADO
+
+| Optimización | Archivo | Estado |
+|---|---|---|
+| Constant Folding (int + float) | `ir.rs:248-295` | ✅ |
+| Dead Code Elimination (Nop) | `ir.rs:297-304` | ✅ |
+| SIMD AVX2 (float[8]) | `isa.rs` | ✅ |
+
+### ❌ FALTANTE
+
+| Optimización | Prioridad | Descripción |
+|---|---|---|
+| **Inlining** | 🔴 CRÍTICO | Expandir funciones pequeñas |
+| **Loop Unrolling** | 🟡 ALTO | Desenrollar loops pequeños |
+| **Common Subexpression Elimination** | 🟡 ALTO | Evitar cálculos repetidos |
+| **Strength Reduction** | 🟡 ALTO | x * 2 → x << 1 |
+| **Tail Call Optimization** | 🟢 MEDIO | Recursión → loop |
+| **Escape Analysis** | 🟢 MEDIO | Stack vs Heap allocation |
+| **Alias Analysis** | 🟢 MEDIO | Optimizar acceso a memoria |
+
+---
+
+## 6. UB Detection — Estado
+
+### ✅ IMPLEMENTADO (13 tipos)
+
+| UB | Detección |
+|---|---|
+| NoneDeref | ✅ |
+| IndexOutOfBounds | ✅ |
+| KeyNotFound | ✅ |
+| TypeMismatch | ✅ |
+| DivisionByZero | ✅ |
+| MutableDefaultArg | ✅ |
+| InfiniteRecursion | ✅ |
+| CircularImport | ✅ |
+| UnpackMismatch | ✅ |
+
+### ❌ FALTANTE
+
+| UB | Prioridad | Descripción |
+|---|---|---|
+| UseAfterFree | 🔴 CRÍTICO | Detectar uso de memoria liberada |
+| BufferOverflow | 🔴 CRÍTICO | Detectar escritura fuera de bounds |
+| IntegerOverflow | 🟡 ALTO | Detectar overflow en operaciones |
+| UninitializedVariable | 🟡 ALTO | Detectar uso antes de asignación |
+| DataRace | 🟢 MEDIO | Detectar acceso concurrente |
+
+---
+
+## 7. Plan de Acción — Prioridades
+
+### Fase 1: C ABI Real (v4.1)
+
+```
+[ ] Implementar LoadLibraryA real en __pyb_dll_load
+[ ] Implementar GetProcAddress real en DllGetProc
+[ ] Implementar llamada a función C con Windows x64 ABI
+[ ] Agregar ctypes.Structure básico
+[ ] Agregar ctypes.POINTER básico
+[ ] Tests: llamar función C desde Python
 ```
 
-### 20. Módulo `re` (regex básico)
-**Estado:** No implementado  
+### Fase 2: JIT 2.0 Completo (v4.2)
+
+```
+[ ] Parallel compilation con rayon
+[ ] Incremental compilation (hash por función)
+[ ] Mejorar thermal cache con invalidación
+[ ] Hot path detection básico
+```
+
+### Fase 3: Optimizaciones (v4.3)
+
+```
+[ ] Inlining de funciones pequeñas
+[ ] Loop unrolling para range() pequeños
+[ ] Strength reduction
+[ ] Common subexpression elimination
+```
+
+### Fase 4: Standard Library (v4.4)
+
+```
+[ ] Implementar struct.pack/unpack
+[ ] Implementar array.array
+[ ] Mejorar json.loads/dumps (no stubs)
+[ ] Agregar collections básico
+```
 
 ---
 
-## 📈 Roadmap Sugerido
+## 8. Métricas Actuales
 
-### v4.6 (próximo sprint)
-1. Dict string keys (`__pyb_str_hash` djb2)
-2. `for x in list` iteración real
-3. `print(list)` detección automática
-4. `s += "str"` AugAssign
-5. `len(str)` correcto
-
-### v4.7
-6. `str.split()` retorna lista real
-7. `str.join()` implementado
-8. Slicing `s[a:b]`, `l[a:b]`
-9. `int()`, `float()`, `bool()` builtins
-
-### v4.8
-10. Default args
-11. `__str__` dunder dispatch
-12. List comprehensions completas
-13. lambda básico
-
-### v5.0 (Production Ready)
-- Closures reales
-- *args / **kwargs
-- `re` módulo básico
-- GC incremental opcional (para objetos de larga vida)
-- Linux x86-64 target completo
-- Cross-compile ARM64
+| Métrica | Valor | Objetivo |
+|---|---|---|
+| Tests PASS | 83/83 | 100/100 |
+| Compilation time | 0.28ms | <0.5ms ✅ |
+| Binary size (Hello World) | ~2KB | <5KB ✅ |
+| C ABI functions callable | 0 | 10+ |
+| Python syntax coverage | ~85% | 95% |
+| Stdlib modules | 5 | 15 |
 
 ---
 
-> 💀 Binary Is Binary — La meta: Python real sin CPython 🦈🇵🇪
+## 9. Archivos Clave para Modificar
+
+| Archivo | Propósito | Prioridad |
+|---|---|---|
+| `src/rust/backend/isa.rs:1192-1195` | Implementar `__pyb_dll_load` real | 🔴 |
+| `src/rust/backend/isa.rs:3255-3295` | Implementar `DllLoad/GetProc/Call` | 🔴 |
+| `src/rust/frontend/python/py_to_ir.rs:1449-1465` | Mejorar ctypes routing | 🔴 |
+| `src/rust/middle/ir.rs:167-170` | Agregar IR para ctypes.Structure | 🟡 |
+| `src/rust/backend/jit.rs` | Parallel compilation | 🟡 |
+| `src/rust/middle/ir.rs:248-310` | Más optimizaciones | 🟢 |
+
+---
+
+## 10. Conclusión
+
+**PyDead-BIB v4.0** tiene un frontend Python muy completo (85%+ de la sintaxis), pero la integración C ABI es **stub** — no funciona realmente. Para alcanzar el objetivo de Python + C ABI nativo:
+
+1. **Prioridad máxima:** Implementar `LoadLibraryA` y `GetProcAddress` reales
+2. **Siguiente:** Agregar `ctypes.Structure` y `ctypes.POINTER`
+3. **Después:** Completar JIT 2.0 con parallel compilation
+
+**Estimación:** 2-3 semanas para C ABI funcional, 1-2 semanas adicionales para JIT 2.0 completo.
+
+---
+
+*Generado por PyDead-BIB Analysis Tool — 2026-03-20*
