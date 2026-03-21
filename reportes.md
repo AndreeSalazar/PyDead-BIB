@@ -268,14 +268,21 @@ enc.ret();
 [x] tests/ub_detection/ — Tests de UB Detection
 ```
 
-### Fase 4: Pendiente (v4.3)
+### Fase 4: JIT 2.0 Completo (v4.3) ✅ COMPLETADO
+
+```
+[x] Inlining de funciones pequeñas (≤5 instrucciones)
+[x] Loop unrolling detection
+[x] Common Subexpression Elimination (CSE)
+[x] UB Detection ESTRICTO por defecto — UB NO EXISTE
+```
+
+### Fase 5: Pendiente (v4.4)
 
 ```
 [ ] Parallel compilation con rayon
-[ ] Inlining de funciones pequeñas
-[ ] Loop unrolling para range() pequeños
-[ ] Common subexpression elimination
 [ ] ctypes.callback (callbacks Python→C)
+[ ] Calling conventions (stdcall/fastcall)
 ```
 
 ---

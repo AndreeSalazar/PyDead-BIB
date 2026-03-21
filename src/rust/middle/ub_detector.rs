@@ -63,11 +63,13 @@ pub struct PyUBDetector {
 }
 
 impl PyUBDetector {
+    /// PyDead-BIB es ESTRICTO por defecto — UB NO EXISTE
+    /// Cualquier UB detectado bloquea la compilación
     pub fn new() -> Self {
         Self {
             reports: Vec::new(),
             file: String::new(),
-            strict_mode: false,
+            strict_mode: true,  // ESTRICTO por defecto — UB NO PERMITIDO
         }
     }
 
@@ -305,6 +307,49 @@ impl PyUBDetector {
     /// Check if any errors (not just warnings) were found
     pub fn has_errors(&self) -> bool {
         self.reports.iter().any(|r| r.severity == UBSeverity::Error)
+    }
+
+    /// PyDead-BIB ESTRICTO: Verificar y bloquear compilación si hay UB
+    /// Retorna Err con mensaje de error si hay UB detectado
+    pub fn verify_no_ub(&self) -> Result<(), String> {
+        if !self.strict_mode {
+            return Ok(());
+        }
+
+        let errors: Vec<&UBReport> = self.reports
+            .iter()
+            .filter(|r| r.severity == UBSeverity::Error)
+            .collect();
+
+        if errors.is_empty() {
+            return Ok(());
+        }
+
+        let mut msg = String::from("\n╔══════════════════════════════════════════════════════════════╗\n");
+        msg.push_str("║  PyDead-BIB: COMPILACIÓN BLOQUEADA — UB DETECTADO                             ║\n");
+        msg.push_str("║  PyDead-BIB es implícitamente ESTRICTO: UB NO EXISTE                          ║\n");
+        msg.push_str("╚═══════════════════════════════════════════════════════════════════════════════╝\n\n");
+
+        for (i, err) in errors.iter().enumerate() {
+            msg.push_str(&format!("Error #{}: {:?}\n", i + 1, err.kind));
+            msg.push_str(&format!("  Archivo: {}:{}\n", err.file, err.line));
+            msg.push_str(&format!("  Mensaje: {}\n", err.message));
+            if let Some(ref suggestion) = err.suggestion {
+                msg.push_str(&format!("  Sugerencia: {}\n", suggestion));
+            }
+            msg.push('\n');
+        }
+
+        msg.push_str("Corrija los errores anteriores para compilar.\n");
+        msg.push_str("PyDead-BIB NO permite comportamiento indefinido.\n");
+
+        Err(msg)
+    }
+
+    /// Verificar programa completo y bloquear si hay UB
+    pub fn verify_program(&mut self, program: &crate::frontend::python::py_to_ir::IRProgram) -> Result<(), String> {
+        self.analyze(program);
+        self.verify_no_ub()
     }
 }
 
