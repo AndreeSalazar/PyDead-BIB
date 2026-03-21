@@ -74,19 +74,35 @@ ctypes.c_int(42)                    # → passthrough
 ctypes.c_double(3.14)               # → passthrough
 ```
 
+### ✅ IMPLEMENTADO (v4.1)
+
+| Característica | Estado | Descripción |
+|---|---|---|
+| **LoadLibraryA real** | ✅ HECHO | `__pyb_dll_load` llama LoadLibraryA via IAT |
+| **GetProcAddress real** | ✅ HECHO | `__pyb_dll_get_proc` llama GetProcAddress via IAT |
+| **Llamada a función C** | ✅ HECHO | `__pyb_dll_call` ejecuta función con Windows x64 ABI |
+| **FreeLibrary** | ✅ HECHO | `__pyb_dll_free` libera módulo DLL |
+
+### ✅ IMPLEMENTADO (v4.1 - ctypes)
+
+| Característica | Estado | Descripción |
+|---|---|---|
+| **ctypes.Structure** | ✅ HECHO | `CStructAlloc`, `CStructSetField`, `CStructGetField` en IR |
+| **ctypes.POINTER** | ✅ HECHO | `CPointerAlloc`, `CPointerDeref`, `CPointerSet` en IR |
+| **ctypes.byref** | ✅ HECHO | `CByRef` en IR — LEA para pasar por referencia |
+
+### ✅ IMPLEMENTADO (v4.2 - ctypes extended)
+
+| Característica | Estado | Descripción |
+|---|---|---|
+| **ctypes.c_char_p** | ✅ HECHO | `CCharP` en IR — strings null-terminated |
+| **ctypes.c_void_p** | ✅ HECHO | `CVoidP` en IR — punteros genéricos |
+| **ctypes.Array** | ✅ HECHO | `CArrayAlloc`, `CArraySet`, `CArrayGet` en IR |
+| **struct.pack** | ✅ HECHO | `StructPack` en IR — empaqueta valores |
+| **struct.unpack** | ✅ HECHO | `StructUnpack` en IR — desempaqueta datos |
+
 ### ❌ FALTANTE para C ABI Completo
 
-| Característica | Prioridad | Descripción |
-|---|---|---|
-| **LoadLibraryA real** | 🔴 CRÍTICO | `__pyb_dll_load` es stub (retorna 0) |
-| **GetProcAddress real** | 🔴 CRÍTICO | `DllGetProc` no resuelve símbolos |
-| **Llamada a función C** | 🔴 CRÍTICO | `DllCall` no ejecuta función real |
-| **ctypes.Structure** | 🔴 CRÍTICO | No soportado — necesario para structs C |
-| **ctypes.POINTER** | 🔴 CRÍTICO | No soportado — necesario para punteros |
-| **ctypes.byref** | 🟡 ALTO | No soportado — paso por referencia |
-| **ctypes.c_char_p** | 🟡 ALTO | No soportado — strings C |
-| **ctypes.c_void_p** | 🟡 ALTO | No soportado — punteros genéricos |
-| **ctypes.Array** | 🟡 ALTO | No soportado — arrays C |
 | **ctypes.callback** | 🟢 MEDIO | No soportado — callbacks Python→C |
 | **Calling conventions** | 🟢 MEDIO | Solo cdecl, falta stdcall/fastcall |
 
@@ -166,14 +182,19 @@ enc.ret();
 | Dead Code Elimination (Nop) | `ir.rs:297-304` | ✅ |
 | SIMD AVX2 (float[8]) | `isa.rs` | ✅ |
 
+### ✅ IMPLEMENTADO (v4.2)
+
+| Optimización | Estado | Descripción |
+|---|---|---|
+| **Strength Reduction** | ✅ HECHO | x * 2 → x << 1, x / 2 → x >> 1, x % 2 → x & 1 |
+
 ### ❌ FALTANTE
 
 | Optimización | Prioridad | Descripción |
 |---|---|---|
-| **Inlining** | 🔴 CRÍTICO | Expandir funciones pequeñas |
+| **Inlining** | � ALTO | Expandir funciones pequeñas |
 | **Loop Unrolling** | 🟡 ALTO | Desenrollar loops pequeños |
 | **Common Subexpression Elimination** | 🟡 ALTO | Evitar cálculos repetidos |
-| **Strength Reduction** | 🟡 ALTO | x * 2 → x << 1 |
 | **Tail Call Optimization** | 🟢 MEDIO | Recursión → loop |
 | **Escape Analysis** | 🟢 MEDIO | Stack vs Heap allocation |
 | **Alias Analysis** | 🟢 MEDIO | Optimizar acceso a memoria |
@@ -196,13 +217,20 @@ enc.ret();
 | CircularImport | ✅ |
 | UnpackMismatch | ✅ |
 
+### ✅ IMPLEMENTADO (v4.2 - Memory Safety)
+
+| UB | Estado | Descripción |
+|---|---|---|
+| UseAfterFree | ✅ HECHO | Detectar uso de memoria liberada |
+| BufferOverflow | ✅ HECHO | Detectar escritura fuera de bounds |
+| DoubleFree | ✅ HECHO | Detectar liberación doble |
+| NullPointerDeref | ✅ HECHO | Detectar dereferenciar puntero nulo |
+| IntegerOverflow | ✅ HECHO | `detect_integer_overflow()` en ir.rs |
+
 ### ❌ FALTANTE
 
 | UB | Prioridad | Descripción |
 |---|---|---|
-| UseAfterFree | 🔴 CRÍTICO | Detectar uso de memoria liberada |
-| BufferOverflow | 🔴 CRÍTICO | Detectar escritura fuera de bounds |
-| IntegerOverflow | 🟡 ALTO | Detectar overflow en operaciones |
 | UninitializedVariable | 🟡 ALTO | Detectar uso antes de asignación |
 | DataRace | 🟢 MEDIO | Detectar acceso concurrente |
 
@@ -210,42 +238,44 @@ enc.ret();
 
 ## 7. Plan de Acción — Prioridades
 
-### Fase 1: C ABI Real (v4.1)
+### Fase 1: C ABI Real (v4.1) ✅ COMPLETADO
 
 ```
-[ ] Implementar LoadLibraryA real en __pyb_dll_load
-[ ] Implementar GetProcAddress real en DllGetProc
-[ ] Implementar llamada a función C con Windows x64 ABI
-[ ] Agregar ctypes.Structure básico
-[ ] Agregar ctypes.POINTER básico
-[ ] Tests: llamar función C desde Python
+[x] Implementar LoadLibraryA real en __pyb_dll_load
+[x] Implementar GetProcAddress real en DllGetProc
+[x] Implementar llamada a función C con Windows x64 ABI
+[x] Agregar ctypes.Structure básico
+[x] Agregar ctypes.POINTER básico
+[x] Tests: llamar función C desde Python
 ```
 
-### Fase 2: JIT 2.0 Completo (v4.2)
+### Fase 2: C ABI Extended (v4.2) ✅ COMPLETADO
+
+```
+[x] ctypes.c_char_p (strings C)
+[x] ctypes.c_void_p (punteros genéricos)
+[x] ctypes.Array (arrays C)
+[x] struct.pack/unpack
+[x] Strength Reduction optimization
+[x] Integer Overflow detection
+```
+
+### Fase 3: Tests Organizados (v4.2) ✅ COMPLETADO
+
+```
+[x] tests/python/ — Tests de Python básico
+[x] tests/c_abi/ — Tests de C ABI (ctypes, struct)
+[x] tests/ub_detection/ — Tests de UB Detection
+```
+
+### Fase 4: Pendiente (v4.3)
 
 ```
 [ ] Parallel compilation con rayon
-[ ] Incremental compilation (hash por función)
-[ ] Mejorar thermal cache con invalidación
-[ ] Hot path detection básico
-```
-
-### Fase 3: Optimizaciones (v4.3)
-
-```
 [ ] Inlining de funciones pequeñas
 [ ] Loop unrolling para range() pequeños
-[ ] Strength reduction
 [ ] Common subexpression elimination
-```
-
-### Fase 4: Standard Library (v4.4)
-
-```
-[ ] Implementar struct.pack/unpack
-[ ] Implementar array.array
-[ ] Mejorar json.loads/dumps (no stubs)
-[ ] Agregar collections básico
+[ ] ctypes.callback (callbacks Python→C)
 ```
 
 ---

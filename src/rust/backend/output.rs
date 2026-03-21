@@ -55,6 +55,9 @@ const IMPORT_FUNCS: [&str; IAT_SLOT_COUNT] = [
     "GetEnvironmentVariableA",
     "GetCommandLineA",
     "GetFileSizeEx",
+    "LoadLibraryA",
+    "GetProcAddress",
+    "FreeLibrary",
 ];
 const IMPORT_DLL: &str = "KERNEL32.dll";
 

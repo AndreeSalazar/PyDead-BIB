@@ -27,6 +27,12 @@ pub enum PythonUB {
     GlobalWithoutDeclaration,  // modifica global sin 'global' → warning
     IteratorExhausted,         // reusar generator ya consumido → detectado
     UnpackMismatch,            // a, b = [1, 2, 3] → demasiados valores
+
+    // ── v4.2 — Memory Safety (C ABI) ─────────────────────
+    UseAfterFree,              // Usar memoria después de liberar
+    BufferOverflow,            // Escribir fuera de bounds de array/struct
+    DoubleFree,                // Liberar memoria ya liberada
+    NullPointerDeref,          // Dereferenciar puntero nulo en C ABI
 }
 
 /// Severity level for UB reports

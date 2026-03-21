@@ -164,10 +164,31 @@ pub enum IRInstruction {
     SimdReduce { op: String },              // horizontal reduce (sum/max/min)
     SimdSqrt,                               // VSQRTPS ymm
 
-    // v3.0 — C extension / DLL
-    DllLoad { path: String },               // LoadLibraryA
-    DllGetProc { name: String },            // GetProcAddress
-    DllCall { func_ptr: String, args: Vec<IRInstruction> },
+    // v3.0 — C extension / DLL (C ABI real)
+    DllLoad { path: String },                           // LoadLibraryA → RAX = HMODULE
+    DllGetProc { module: String, name: String },        // GetProcAddress(hModule, name) → RAX = func_ptr
+    DllCall { func_ptr: String, args: Vec<IRInstruction> }, // CALL func_ptr with args
+    DllFree { module: String },                         // FreeLibrary(hModule)
+
+    // v4.1 — ctypes C ABI types
+    CStructAlloc { name: String, size: usize },         // HeapAlloc(size) → RAX = struct ptr
+    CStructSetField { offset: usize, value: Box<IRInstruction> }, // MOV [RAX+offset], value
+    CStructGetField { offset: usize },                  // MOV RAX, [RCX+offset]
+    CPointerAlloc { inner_size: usize },                // HeapAlloc(8) → RAX = ptr to ptr
+    CPointerDeref,                                      // MOV RAX, [RAX]
+    CPointerSet { value: Box<IRInstruction> },          // MOV [RAX], value
+    CByRef { var: String },                             // LEA RAX, [var] — pass by reference
+
+    // v4.2 — ctypes extended types
+    CCharP { value: Box<IRInstruction> },               // c_char_p — string → null-terminated ptr
+    CVoidP { value: Box<IRInstruction> },               // c_void_p — generic pointer
+    CArrayAlloc { elem_size: usize, count: usize },     // Array allocation
+    CArraySet { elem_size: usize, index: Box<IRInstruction>, value: Box<IRInstruction> },
+    CArrayGet { elem_size: usize, index: Box<IRInstruction> },
+
+    // v4.2 — struct module (pack/unpack)
+    StructPack { format: String, values: Vec<IRInstruction> },   // struct.pack(fmt, v1, v2, ...)
+    StructUnpack { format: String, data: Box<IRInstruction> },   // struct.unpack(fmt, data)
 
     // v4.0 — Global State Tracker (FASE 1)
     GlobalLoad(String),             // MOV RAX, [__global_name] from .data
@@ -303,9 +324,102 @@ pub fn optimize_dead_code_elimination(func: &mut IRFunction) -> usize {
     eliminated
 }
 
+/// v4.2 — Strength Reduction: replace expensive ops with cheaper ones
+/// x * 2 → x << 1, x * 4 → x << 2, x / 2 → x >> 1, etc.
+pub fn optimize_strength_reduction(func: &mut IRFunction) -> usize {
+    let mut reduced = 0;
+    let len = func.body.len();
+    for i in 0..len {
+        let new_instr = match &func.body[i] {
+            IRInstruction::BinOp { op: IROp::Mul, left, right } => {
+                // x * 2^n → x << n
+                if let IRInstruction::LoadConst(IRConstValue::Int(n)) = right.as_ref() {
+                    if *n > 0 && (*n & (*n - 1)) == 0 {
+                        // n is power of 2
+                        let shift = (*n as u64).trailing_zeros() as i64;
+                        Some(IRInstruction::BinOp {
+                            op: IROp::Shl,
+                            left: left.clone(),
+                            right: Box::new(IRInstruction::LoadConst(IRConstValue::Int(shift))),
+                        })
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            IRInstruction::BinOp { op: IROp::Div, left, right } => {
+                // x / 2^n → x >> n (for positive integers)
+                if let IRInstruction::LoadConst(IRConstValue::Int(n)) = right.as_ref() {
+                    if *n > 0 && (*n & (*n - 1)) == 0 {
+                        let shift = (*n as u64).trailing_zeros() as i64;
+                        Some(IRInstruction::BinOp {
+                            op: IROp::Shr,
+                            left: left.clone(),
+                            right: Box::new(IRInstruction::LoadConst(IRConstValue::Int(shift))),
+                        })
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            IRInstruction::BinOp { op: IROp::Mod, left, right } => {
+                // x % 2^n → x & (2^n - 1)
+                if let IRInstruction::LoadConst(IRConstValue::Int(n)) = right.as_ref() {
+                    if *n > 0 && (*n & (*n - 1)) == 0 {
+                        Some(IRInstruction::BinOp {
+                            op: IROp::And,
+                            left: left.clone(),
+                            right: Box::new(IRInstruction::LoadConst(IRConstValue::Int(*n - 1))),
+                        })
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+        if let Some(optimized) = new_instr {
+            func.body[i] = optimized;
+            reduced += 1;
+        }
+    }
+    reduced
+}
+
+/// v4.2 — Integer Overflow Detection (UB)
+pub fn detect_integer_overflow(func: &IRFunction) -> Vec<(usize, String)> {
+    let mut warnings = Vec::new();
+    for (i, instr) in func.body.iter().enumerate() {
+        if let IRInstruction::BinOp { op, left, right } = instr {
+            if let (IRInstruction::LoadConst(IRConstValue::Int(a)),
+                    IRInstruction::LoadConst(IRConstValue::Int(b))) = (left.as_ref(), right.as_ref()) {
+                let overflow = match op {
+                    IROp::Add => a.checked_add(*b).is_none(),
+                    IROp::Sub => a.checked_sub(*b).is_none(),
+                    IROp::Mul => a.checked_mul(*b).is_none(),
+                    IROp::Pow if *b > 63 => true,
+                    IROp::Shl if *b > 63 => true,
+                    _ => false,
+                };
+                if overflow {
+                    warnings.push((i, format!("Integer overflow in {:?} operation", op)));
+                }
+            }
+        }
+    }
+    warnings
+}
+
 /// Run all optimization passes on a function
 pub fn optimize_function(func: &mut IRFunction) -> (usize, usize) {
     let folded = optimize_constant_folding(func);
+    let reduced = optimize_strength_reduction(func);
     let eliminated = optimize_dead_code_elimination(func);
-    (folded, eliminated)
+    (folded + reduced, eliminated)
 }

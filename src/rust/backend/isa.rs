@@ -56,7 +56,10 @@ pub const IAT_FIND_CLOSE: usize = 16;
 pub const IAT_GET_ENVIRONMENT_VARIABLE: usize = 17;
 pub const IAT_GET_COMMAND_LINE: usize = 18;
 pub const IAT_GET_FILE_SIZE: usize = 19;
-pub const IAT_SLOT_COUNT: usize = 20;
+pub const IAT_LOAD_LIBRARY: usize = 20;
+pub const IAT_GET_PROC_ADDRESS: usize = 21;
+pub const IAT_FREE_LIBRARY: usize = 22;
+pub const IAT_SLOT_COUNT: usize = 23;
 
 // ── Compiled code section ─────────────────────────────────────
 pub struct CompiledProgram {
@@ -1189,9 +1192,49 @@ fn emit_runtime_stubs(enc: &mut Encoder, target: Target) {
     enc.emit(&[0x48, 0xFF, 0x41, 0x08]); // INC QWORD [RCX+8]
     enc.ret();
 
-    // __pyb_dll_load: RCX=path_ptr → RAX = module handle (stub)
+    // __pyb_dll_load: RCX=path_ptr → RAX = module handle
+    // Calls LoadLibraryA(path) via IAT
     enc.label("__pyb_dll_load");
-    enc.xor_rr(X86Reg::RAX); // Return 0 (stub)
+    enc.push(X86Reg::RBX);
+    enc.sub_rsp(32);                    // Shadow space for Windows x64 ABI
+    // RCX already contains path_ptr
+    enc.call_iat(IAT_LOAD_LIBRARY);     // LoadLibraryA(path) → RAX = HMODULE
+    enc.add_rsp(32);
+    enc.pop(X86Reg::RBX);
+    enc.ret();
+
+    // __pyb_dll_get_proc: RCX=hModule, RDX=proc_name → RAX = func_ptr
+    // Calls GetProcAddress(hModule, name) via IAT
+    enc.label("__pyb_dll_get_proc");
+    enc.push(X86Reg::RBX);
+    enc.sub_rsp(32);                    // Shadow space
+    // RCX = hModule, RDX = proc_name (already set by caller)
+    enc.call_iat(IAT_GET_PROC_ADDRESS); // GetProcAddress(hModule, name) → RAX = func_ptr
+    enc.add_rsp(32);
+    enc.pop(X86Reg::RBX);
+    enc.ret();
+
+    // __pyb_dll_call: RAX=func_ptr, RCX/RDX/R8/R9=args → RAX = result
+    // Calls function pointer with Windows x64 calling convention
+    enc.label("__pyb_dll_call");
+    enc.push(X86Reg::RBX);
+    enc.mov_rr(X86Reg::RBX, X86Reg::RAX); // Save func_ptr in RBX
+    enc.sub_rsp(32);                       // Shadow space
+    // Args already in RCX, RDX, R8, R9 from caller
+    // CALL RBX (func_ptr)
+    enc.emit(&[0xFF, 0xD3]);               // CALL RBX
+    enc.add_rsp(32);
+    enc.pop(X86Reg::RBX);
+    enc.ret();
+
+    // __pyb_dll_free: RCX=hModule → void
+    // Calls FreeLibrary(hModule) via IAT
+    enc.label("__pyb_dll_free");
+    enc.push(X86Reg::RBX);
+    enc.sub_rsp(32);
+    enc.call_iat(IAT_FREE_LIBRARY);
+    enc.add_rsp(32);
+    enc.pop(X86Reg::RBX);
     enc.ret();
 
     // ══════════════════════════════════════════════════════════
@@ -3261,19 +3304,26 @@ fn compile_instruction(instr: &IRInstruction, func: &AllocatedFunction, enc: &mu
             enc.lea_rax_data(path);
             enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
             enc.sub_rsp(32);
-            enc.call_iat(20); // LoadLibraryA slot (to be added)
+            enc.call_iat(IAT_LOAD_LIBRARY);
             enc.add_rsp(32);
         }
-        IRInstruction::DllGetProc { name } => {
-            // GetProcAddress(hModule, name) — RAX has module handle
+        IRInstruction::DllGetProc { module: _, name } => {
+            // GetProcAddress(hModule, name) — RAX has module handle from previous DllLoad
             enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
             enc.lea_rax_data(name);
             enc.mov_rr(X86Reg::RDX, X86Reg::RAX);
             enc.sub_rsp(32);
-            enc.call_iat(21); // GetProcAddress slot (to be added)
+            enc.call_iat(IAT_GET_PROC_ADDRESS);
             enc.add_rsp(32);
         }
-        IRInstruction::DllCall { func_ptr, args } => {
+        IRInstruction::DllFree { module: _ } => {
+            // FreeLibrary(hModule) — RAX has module handle
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_iat(IAT_FREE_LIBRARY);
+            enc.add_rsp(32);
+        }
+        IRInstruction::DllCall { func_ptr: _, args } => {
             // Call function pointer in RAX with args
             for (i, arg) in args.iter().enumerate() {
                 compile_instruction(arg, func, enc, saved_regs, stack_size);
@@ -3289,6 +3339,147 @@ fn compile_instruction(instr: &IRInstruction, func: &AllocatedFunction, enc: &mu
             // CALL RAX — FF D0
             enc.emit(&[0xFF, 0xD0]);
             enc.add_rsp(32);
+        }
+
+        // v4.1 — ctypes C ABI types
+        IRInstruction::CStructAlloc { name: _, size } => {
+            // HeapAlloc(size) → RAX = struct ptr
+            enc.mov_imm64(X86Reg::RCX, *size as i64);
+            enc.call_label("__pyb_heap_alloc");
+        }
+        IRInstruction::CStructSetField { offset, value } => {
+            // Save struct ptr, evaluate value, then MOV [ptr+offset], value
+            enc.push(X86Reg::RBX);
+            enc.mov_rr(X86Reg::RBX, X86Reg::RAX); // Save struct ptr
+            compile_instruction(value, func, enc, saved_regs, stack_size);
+            // MOV [RBX+offset], RAX
+            if *offset < 128 {
+                enc.emit(&[0x48, 0x89, 0x43, *offset as u8]); // MOV [RBX+disp8], RAX
+            } else {
+                enc.emit(&[0x48, 0x89, 0x83]); // MOV [RBX+disp32], RAX
+                enc.emit_u32_le(*offset as u32);
+            }
+            enc.mov_rr(X86Reg::RAX, X86Reg::RBX); // Restore struct ptr to RAX
+            enc.pop(X86Reg::RBX);
+        }
+        IRInstruction::CStructGetField { offset } => {
+            // MOV RAX, [RCX+offset] — RCX = struct ptr
+            if *offset < 128 {
+                enc.emit(&[0x48, 0x8B, 0x41, *offset as u8]); // MOV RAX, [RCX+disp8]
+            } else {
+                enc.emit(&[0x48, 0x8B, 0x81]); // MOV RAX, [RCX+disp32]
+                enc.emit_u32_le(*offset as u32);
+            }
+        }
+        IRInstruction::CPointerAlloc { inner_size: _ } => {
+            // HeapAlloc(8) → RAX = ptr to ptr
+            enc.mov_imm64(X86Reg::RCX, 8);
+            enc.call_label("__pyb_heap_alloc");
+        }
+        IRInstruction::CPointerDeref => {
+            // MOV RAX, [RAX]
+            enc.emit(&[0x48, 0x8B, 0x00]);
+        }
+        IRInstruction::CPointerSet { value } => {
+            // Save ptr, evaluate value, MOV [ptr], value
+            enc.push(X86Reg::RBX);
+            enc.mov_rr(X86Reg::RBX, X86Reg::RAX);
+            compile_instruction(value, func, enc, saved_regs, stack_size);
+            enc.emit(&[0x48, 0x89, 0x03]); // MOV [RBX], RAX
+            enc.mov_rr(X86Reg::RAX, X86Reg::RBX);
+            enc.pop(X86Reg::RBX);
+        }
+        IRInstruction::CByRef { var } => {
+            // LEA RAX, [var] — load address of variable
+            enc.lea_rax_data(var);
+        }
+
+        // v4.2 — ctypes extended types
+        IRInstruction::CCharP { value } => {
+            // c_char_p: evaluate string, it's already a pointer to null-terminated data
+            compile_instruction(value, func, enc, saved_regs, stack_size);
+            // RAX now contains pointer to string data (already null-terminated in .data)
+        }
+        IRInstruction::CVoidP { value } => {
+            // c_void_p: just pass through the pointer value
+            compile_instruction(value, func, enc, saved_regs, stack_size);
+        }
+        IRInstruction::CArrayAlloc { elem_size, count } => {
+            // Allocate array: HeapAlloc(elem_size * count)
+            let total_size = (*elem_size * *count) as i64;
+            enc.mov_imm64(X86Reg::RCX, total_size);
+            enc.call_label("__pyb_heap_alloc");
+        }
+        IRInstruction::CArraySet { elem_size, index, value } => {
+            // array[index] = value
+            enc.push(X86Reg::RBX);
+            enc.push(X86Reg::R12);
+            enc.mov_rr(X86Reg::RBX, X86Reg::RAX); // Save array ptr
+            compile_instruction(index, func, enc, saved_regs, stack_size);
+            enc.mov_rr(X86Reg::R12, X86Reg::RAX); // Save index
+            compile_instruction(value, func, enc, saved_regs, stack_size);
+            // Calculate offset: index * elem_size
+            enc.emit(&[0x49, 0x6B, 0xC4, *elem_size as u8]); // IMUL RAX, R12, elem_size
+            enc.emit(&[0x48, 0x01, 0xD8]); // ADD RAX, RBX
+            enc.emit(&[0x48, 0x89, 0x00]); // MOV [RAX], value (from previous RAX)
+            enc.mov_rr(X86Reg::RAX, X86Reg::RBX);
+            enc.pop(X86Reg::R12);
+            enc.pop(X86Reg::RBX);
+        }
+        IRInstruction::CArrayGet { elem_size, index } => {
+            // value = array[index]
+            enc.push(X86Reg::RBX);
+            enc.mov_rr(X86Reg::RBX, X86Reg::RAX); // Save array ptr
+            compile_instruction(index, func, enc, saved_regs, stack_size);
+            // Calculate offset: index * elem_size
+            enc.emit(&[0x48, 0x6B, 0xC0, *elem_size as u8]); // IMUL RAX, RAX, elem_size
+            enc.emit(&[0x48, 0x01, 0xD8]); // ADD RAX, RBX
+            enc.emit(&[0x48, 0x8B, 0x00]); // MOV RAX, [RAX]
+            enc.pop(X86Reg::RBX);
+        }
+
+        // v4.2 — struct module
+        IRInstruction::StructPack { format, values } => {
+            // struct.pack: allocate buffer, pack values according to format
+            // Calculate total size from format string
+            let size = format.chars().filter(|c| *c != '<' && *c != '>' && *c != '=' && *c != '@' && *c != '!').map(|c| match c {
+                'b' | 'B' | 'c' | '?' => 1,
+                'h' | 'H' => 2,
+                'i' | 'I' | 'l' | 'L' | 'f' => 4,
+                'q' | 'Q' | 'd' | 'P' => 8,
+                _ => 0,
+            }).sum::<usize>();
+            enc.mov_imm64(X86Reg::RCX, size as i64);
+            enc.call_label("__pyb_heap_alloc");
+            enc.push(X86Reg::RBX);
+            enc.mov_rr(X86Reg::RBX, X86Reg::RAX); // Save buffer ptr
+            let mut offset = 0usize;
+            for (i, c) in format.chars().filter(|c| *c != '<' && *c != '>' && *c != '=' && *c != '@' && *c != '!').enumerate() {
+                if i < values.len() {
+                    compile_instruction(&values[i], func, enc, saved_regs, stack_size);
+                    // MOV [RBX+offset], RAX (or part of it)
+                    if offset < 128 {
+                        enc.emit(&[0x48, 0x89, 0x43, offset as u8]);
+                    } else {
+                        enc.emit(&[0x48, 0x89, 0x83]);
+                        enc.emit_u32_le(offset as u32);
+                    }
+                }
+                offset += match c {
+                    'b' | 'B' | 'c' | '?' => 1,
+                    'h' | 'H' => 2,
+                    'i' | 'I' | 'l' | 'L' | 'f' => 4,
+                    'q' | 'Q' | 'd' | 'P' => 8,
+                    _ => 0,
+                };
+            }
+            enc.mov_rr(X86Reg::RAX, X86Reg::RBX);
+            enc.pop(X86Reg::RBX);
+        }
+        IRInstruction::StructUnpack { format: _, data } => {
+            // struct.unpack: return tuple of unpacked values
+            // For now, just return the data pointer (simplified)
+            compile_instruction(data, func, enc, saved_regs, stack_size);
         }
 
         // v4.0 — GPU Dispatch (FASE 4)

@@ -7,8 +7,8 @@
 // 13/13 fases completas — Real Runtime Output ✓
 // ============================================================
 
-use pydead_bib::frontend::python::compile_python_to_ir;
-use pydead_bib::backend::isa::Target;
+use adead_bib::frontend::python::compile_python_to_ir;
+use adead_bib::backend::isa::Target;
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -201,7 +201,7 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     // ── Phase 01: Preprocessor ────────────────────────────────
     let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 01:{} {}PREPROCESSOR{}", BOLD, BLUE, RESET, CYAN, RESET);
-    let mut preprocessor = pydead_bib::frontend::python::py_preprocessor::PyPreprocessor::new();
+    let mut preprocessor = adead_bib::frontend::python::py_preprocessor::PyPreprocessor::new();
     let preprocessed = preprocessor.process(&source);
     let line_count = preprocessed.lines().count();
     let t01 = t0.elapsed();
@@ -211,7 +211,7 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     // ── Phase 02: Import Eliminator ───────────────────────────
     let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 02:{} {}IMPORT ELIMINATOR{}", BOLD, BLUE, RESET, CYAN, RESET);
-    let import_resolver = pydead_bib::frontend::python::py_import_resolver::PyImportResolver::new();
+    let import_resolver = adead_bib::frontend::python::py_import_resolver::PyImportResolver::new();
     let imports = import_resolver.resolve(&preprocessed);
     for imp in &imports {
         let resolved = import_resolver.resolve_module(imp);
@@ -225,17 +225,17 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     // ── Phase 03: Lexer ───────────────────────────────────────
     let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 03:{} {}LEXER{}", BOLD, BLUE, RESET, CYAN, RESET);
-    let mut lexer = pydead_bib::frontend::python::py_lexer::PyLexer::new(&preprocessed);
+    let mut lexer = adead_bib::frontend::python::py_lexer::PyLexer::new(&preprocessed);
     let tokens = lexer.tokenize();
-    let indent_count = tokens.iter().filter(|t| matches!(t, pydead_bib::frontend::python::py_lexer::PyToken::Indent)).count();
-    let dedent_count = tokens.iter().filter(|t| matches!(t, pydead_bib::frontend::python::py_lexer::PyToken::Dedent)).count();
+    let indent_count = tokens.iter().filter(|t| matches!(t, adead_bib::frontend::python::py_lexer::PyToken::Indent)).count();
+    let dedent_count = tokens.iter().filter(|t| matches!(t, adead_bib::frontend::python::py_lexer::PyToken::Dedent)).count();
     println!("  {}tokens:{}  {}{}{}", DIM, RESET, BOLD, tokens.len(), RESET);
     println!("  {}indent:{}  {}/{} pares  {}[{:.3}ms]{}", DIM, RESET, indent_count, dedent_count, DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
 
     // ── Phase 04: Parser ──────────────────────────────────────
     let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 04:{} {}PARSER{}", BOLD, BLUE, RESET, CYAN, RESET);
-    let mut parser = pydead_bib::frontend::python::py_parser::PyParser::new(tokens);
+    let mut parser = adead_bib::frontend::python::py_parser::PyParser::new(tokens);
     let ast = match parser.parse() {
         Ok(a) => a,
         Err(e) => {
@@ -248,13 +248,13 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     println!("  {}AST:{}     {}{}{} top-level nodes  {}[{:.3}ms]{}", DIM, RESET, BOLD, ast.body.len(), RESET, DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
     for stmt in &ast.body {
         match stmt {
-            pydead_bib::frontend::python::py_ast::PyStmt::FunctionDef { name, params, .. } => {
+            adead_bib::frontend::python::py_ast::PyStmt::FunctionDef { name, params, .. } => {
                 println!("  {}├─{} {}fn{} {}{}{}({}{}{})", DIM, RESET, MAGENTA, RESET, BOLD, name, RESET, DIM, params.len(), RESET);
             }
-            pydead_bib::frontend::python::py_ast::PyStmt::ClassDef { name, .. } => {
+            adead_bib::frontend::python::py_ast::PyStmt::ClassDef { name, .. } => {
                 println!("  {}├─{} {}class{} {}{}{}", DIM, RESET, YELLOW, RESET, BOLD, name, RESET);
             }
-            pydead_bib::frontend::python::py_ast::PyStmt::Import { names } => {
+            adead_bib::frontend::python::py_ast::PyStmt::Import { names } => {
                 for alias in names {
                     println!("  {}├─{} {}import{} {}", DIM, RESET, BLUE, RESET, alias.name);
                 }
@@ -266,7 +266,7 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     // ── Phase 05: Type Inferencer ─────────────────────────────
     let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 05:{} {}TYPE INFERENCER{}", BOLD, BLUE, RESET, CYAN, RESET);
-    let mut inferencer = pydead_bib::frontend::python::py_types::PyTypeInferencer::new();
+    let mut inferencer = adead_bib::frontend::python::py_types::PyTypeInferencer::new();
     let typed_ast = inferencer.infer(&ast);
     println!("  {}{}✓{} inference complete  {}[{:.3}ms]{}", GREEN, BOLD, RESET, DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
     // v4.0 FASE 3: Show struct layouts
@@ -307,7 +307,7 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     let mut total_eliminated = 0usize;
     let mut ir = ir; // make mutable
     for func in ir.functions.iter_mut() {
-        let (f, e) = pydead_bib::middle::ir::optimize_function(func);
+        let (f, e) = adead_bib::middle::ir::optimize_function(func);
         total_folded += f;
         total_eliminated += e;
     }
@@ -317,12 +317,12 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     // ── Phase 07: UB Detector ─────────────────────────────────
     let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 07:{} {}UB DETECTOR{}", BOLD, BLUE, RESET, CYAN, RESET);
-    let mut ub_detector = pydead_bib::middle::ub_detector::PyUBDetector::new()
+    let mut ub_detector = adead_bib::middle::ub_detector::PyUBDetector::new()
         .with_file(input_file.to_string());
     let reports = ub_detector.analyze(&ir);
-    let ub_errors = reports.iter().filter(|r| matches!(r.severity, pydead_bib::middle::ub_detector::UBSeverity::Error)).count();
-    let ub_warnings = reports.iter().filter(|r| matches!(r.severity, pydead_bib::middle::ub_detector::UBSeverity::Warning)).count();
-    let ub_infos = reports.iter().filter(|r| matches!(r.severity, pydead_bib::middle::ub_detector::UBSeverity::Info)).count();
+    let ub_errors = reports.iter().filter(|r| matches!(r.severity, adead_bib::middle::ub_detector::UBSeverity::Error)).count();
+    let ub_warnings = reports.iter().filter(|r| matches!(r.severity, adead_bib::middle::ub_detector::UBSeverity::Warning)).count();
+    let ub_infos = reports.iter().filter(|r| matches!(r.severity, adead_bib::middle::ub_detector::UBSeverity::Info)).count();
     if reports.is_empty() {
         println!("  {}{}✓ CLEAN{} — 0 errors, 0 warnings, 0 infos  {}[{:.3}ms]{}", GREEN, BOLD, RESET, DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
     } else {
@@ -333,9 +333,9 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
             DIM, ub_infos, RESET);
         for report in reports.iter() {
             let (icon, color) = match report.severity {
-                pydead_bib::middle::ub_detector::UBSeverity::Error => ("✗", RED),
-                pydead_bib::middle::ub_detector::UBSeverity::Warning => ("⚠", YELLOW),
-                pydead_bib::middle::ub_detector::UBSeverity::Info => ("ℹ", BLUE),
+                adead_bib::middle::ub_detector::UBSeverity::Error => ("✗", RED),
+                adead_bib::middle::ub_detector::UBSeverity::Warning => ("⚠", YELLOW),
+                adead_bib::middle::ub_detector::UBSeverity::Info => ("ℹ", BLUE),
             };
             println!("  {}{}{}{} {:?}: {}{}", color, BOLD, icon, RESET, report.kind, report.message, RESET);
             if let Some(suggestion) = &report.suggestion {
@@ -358,7 +358,7 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     // ── Phase 08: Optimizer ───────────────────────────────────
     let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 08:{} {}OPTIMIZER{}", BOLD, BLUE, RESET, CYAN, RESET);
-    let optimized = pydead_bib::backend::optimizer::optimize(&ir);
+    let optimized = adead_bib::backend::optimizer::optimize(&ir);
     println!("  {}folded:{}  {} constants", DIM, RESET, optimized.stats.constants_folded);
     println!("  {}dead:{}    {} removed", DIM, RESET, optimized.stats.dead_code_removed);
     println!("  {}SIMD:{}    {} vectorized  {}[{:.3}ms]{}", DIM, RESET, optimized.stats.simd_vectorized, DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
@@ -366,7 +366,7 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     // ── Phase 09: Register Allocator ──────────────────────────
     let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 09:{} {}REGISTER ALLOCATOR{}", BOLD, BLUE, RESET, CYAN, RESET);
-    let allocated = pydead_bib::backend::reg_alloc::allocate(&optimized);
+    let allocated = adead_bib::backend::reg_alloc::allocate(&optimized);
     println!("  {}vars:{}    {} → {}{}{} regs, {} spills",
         DIM, RESET, allocated.stats.total_vars, GREEN, allocated.stats.registers_used, RESET, allocated.stats.spills);
     for func in &allocated.functions {
@@ -377,7 +377,7 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     // ── Phase 10: ISA Compiler ────────────────────────────────
     let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 10:{} {}ISA COMPILER (x86-64){}", BOLD, BLUE, RESET, CYAN, RESET);
-    let compiled = pydead_bib::backend::isa::compile(&allocated, target);
+    let compiled = adead_bib::backend::isa::compile(&allocated, target);
     println!("  {}.text:{}   {}{}{} bytes", DIM, RESET, BOLD, compiled.stats.total_bytes, RESET);
     println!("  {}funcs:{}   {}", DIM, RESET, compiled.stats.functions_compiled);
     println!("  {}instrs:{}  {}  {}[{:.3}ms]{}", DIM, RESET, compiled.stats.instructions_emitted, DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
@@ -385,7 +385,7 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     // ── Phase 11: BG Stamp ────────────────────────────────────
     let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 11:{} {}BINARY GUARDIAN{}", BOLD, BLUE, RESET, CYAN, RESET);
-    let stamped = pydead_bib::backend::bg::stamp(&compiled);
+    let stamped = adead_bib::backend::bg::stamp(&compiled);
     println!("  {}magic:{}   {}0x{:08X}{}", DIM, RESET, MAGENTA, stamped.stamp.magic, RESET);
     println!("  {}ver:{}     0x{:04X}", DIM, RESET, stamped.stamp.version);
     println!("  {}chksum:{}  {}0x{:08X}{}  {}[{:.3}ms]{}", DIM, RESET, YELLOW, stamped.stamp.checksum, RESET, DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
@@ -393,8 +393,8 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     // ── Phase 12: Output (PE/ELF/Po) ─────────────────────────
     let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 12:{} {}OUTPUT{}", BOLD, BLUE, RESET, CYAN, RESET);
-    let binary = pydead_bib::backend::output::emit(&stamped);
-    let stats = pydead_bib::backend::output::binary_stats(&binary, &stamped);
+    let binary = adead_bib::backend::output::emit(&stamped);
+    let stats = adead_bib::backend::output::binary_stats(&binary, &stamped);
     println!("  {}format:{}  {}", DIM, RESET, stats.target);
     println!("  {}.text:{}   {} bytes", DIM, RESET, stats.text_bytes);
     println!("  {}.data:{}   {} bytes", DIM, RESET, stats.data_bytes);
@@ -446,10 +446,10 @@ fn jit_execute(input_file: &str) -> Result<(), Box<dyn std::error::Error>> {
     let pipeline_start = std::time::Instant::now();
 
     // MEJORA 6: CPU Feature Detection — detect once
-    let cpu = pydead_bib::backend::jit::detect_cpu_features();
+    let cpu = adead_bib::backend::jit::detect_cpu_features();
 
     // MEJORA 3: Thermal Cache — hash source
-    let source_hash = pydead_bib::backend::jit::hash_source(&source);
+    let source_hash = adead_bib::backend::jit::hash_source(&source);
 
     println!();
     println!("{}{}╔════════════════════════════════════════════════════════════════╗{}", BOLD, MAGENTA, RESET);
@@ -471,25 +471,25 @@ fn jit_execute(input_file: &str) -> Result<(), Box<dyn std::error::Error>> {
 
     // Preprocess
     let t0 = std::time::Instant::now();
-    let mut preprocessor = pydead_bib::frontend::python::py_preprocessor::PyPreprocessor::new();
+    let mut preprocessor = adead_bib::frontend::python::py_preprocessor::PyPreprocessor::new();
     let preprocessed = preprocessor.process(&source);
     let t_preprocess = t0.elapsed();
 
     // Lex
     let t0 = std::time::Instant::now();
-    let mut lexer = pydead_bib::frontend::python::py_lexer::PyLexer::new(&preprocessed);
+    let mut lexer = adead_bib::frontend::python::py_lexer::PyLexer::new(&preprocessed);
     let tokens = lexer.tokenize();
     let t_lex = t0.elapsed();
 
     // Parse
     let t0 = std::time::Instant::now();
-    let mut parser = pydead_bib::frontend::python::py_parser::PyParser::new(tokens);
+    let mut parser = adead_bib::frontend::python::py_parser::PyParser::new(tokens);
     let ast = parser.parse().map_err(|e| format!("Parse error: {}", e))?;
     let t_parse = t0.elapsed();
 
     // Type inference
     let t0 = std::time::Instant::now();
-    let mut inferencer = pydead_bib::frontend::python::py_types::PyTypeInferencer::new();
+    let mut inferencer = adead_bib::frontend::python::py_types::PyTypeInferencer::new();
     let typed_ast = inferencer.infer(&ast);
     let t_types = t0.elapsed();
 
@@ -502,16 +502,16 @@ fn jit_execute(input_file: &str) -> Result<(), Box<dyn std::error::Error>> {
     let t0 = std::time::Instant::now();
     let mut ir = ir;
     for func in ir.functions.iter_mut() {
-        pydead_bib::middle::ir::optimize_function(func);
+        adead_bib::middle::ir::optimize_function(func);
     }
     let t_opt = t0.elapsed();
 
     // UB detect
     let t0 = std::time::Instant::now();
-    let mut ub_detector = pydead_bib::middle::ub_detector::PyUBDetector::new()
+    let mut ub_detector = adead_bib::middle::ub_detector::PyUBDetector::new()
         .with_file(input_file.to_string());
     let reports = ub_detector.analyze(&ir);
-    let ub_errors = reports.iter().filter(|r| matches!(r.severity, pydead_bib::middle::ub_detector::UBSeverity::Error)).count();
+    let ub_errors = reports.iter().filter(|r| matches!(r.severity, adead_bib::middle::ub_detector::UBSeverity::Error)).count();
     if ub_errors > 0 {
         return Err(format!("{} UB error(s)", ub_errors).into());
     }
@@ -519,18 +519,18 @@ fn jit_execute(input_file: &str) -> Result<(), Box<dyn std::error::Error>> {
 
     // Optimize pass 2
     let t0 = std::time::Instant::now();
-    let optimized = pydead_bib::backend::optimizer::optimize(&ir);
+    let optimized = adead_bib::backend::optimizer::optimize(&ir);
     let t_opt2 = t0.elapsed();
 
     // Register allocate
     let t0 = std::time::Instant::now();
-    let allocated = pydead_bib::backend::reg_alloc::allocate(&optimized);
+    let allocated = adead_bib::backend::reg_alloc::allocate(&optimized);
     let t_regalloc = t0.elapsed();
 
     // ISA compile
     let t0 = std::time::Instant::now();
     let target = Target::from_str("windows");
-    let compiled = pydead_bib::backend::isa::compile(&allocated, target);
+    let compiled = adead_bib::backend::isa::compile(&allocated, target);
     let t_isa = t0.elapsed();
 
     let compile_elapsed = pipeline_start.elapsed();
@@ -552,7 +552,7 @@ fn jit_execute(input_file: &str) -> Result<(), Box<dyn std::error::Error>> {
     // JIT execute — MEJORA 7: Instant Entry
     println!("  {}{}▸ JIT KILLER:{} dispatch table → instant image → VirtualAlloc → JMP", BOLD, MAGENTA, RESET);
 
-    match pydead_bib::backend::jit::execute_in_memory_with_stats(
+    match adead_bib::backend::jit::execute_in_memory_with_stats(
         &compiled.text,
         &compiled.data,
         compiled.entry_point,
@@ -725,11 +725,11 @@ fn run_test_suite() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         // Run frontend pipeline silently
-        let mut preprocessor = pydead_bib::frontend::python::py_preprocessor::PyPreprocessor::new();
+        let mut preprocessor = adead_bib::frontend::python::py_preprocessor::PyPreprocessor::new();
         let preprocessed = preprocessor.process(&source);
-        let mut lexer = pydead_bib::frontend::python::py_lexer::PyLexer::new(&preprocessed);
+        let mut lexer = adead_bib::frontend::python::py_lexer::PyLexer::new(&preprocessed);
         let tokens = lexer.tokenize();
-        let mut parser = pydead_bib::frontend::python::py_parser::PyParser::new(tokens);
+        let mut parser = adead_bib::frontend::python::py_parser::PyParser::new(tokens);
         let ast = match parser.parse() {
             Ok(a) => a,
             Err(e) => {
@@ -738,7 +738,7 @@ fn run_test_suite() -> Result<(), Box<dyn std::error::Error>> {
                 continue;
             }
         };
-        let mut inferencer = pydead_bib::frontend::python::py_types::PyTypeInferencer::new();
+        let mut inferencer = adead_bib::frontend::python::py_types::PyTypeInferencer::new();
         let typed_ast = inferencer.infer(&ast);
         let ir = match compile_python_to_ir(&typed_ast) {
             Ok(i) => i,
@@ -750,11 +750,11 @@ fn run_test_suite() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         // Backend pipeline
-        let optimized = pydead_bib::backend::optimizer::optimize(&ir);
-        let allocated = pydead_bib::backend::reg_alloc::allocate(&optimized);
-        let compiled = pydead_bib::backend::isa::compile(&allocated, Target::Windows);
-        let stamped = pydead_bib::backend::bg::stamp(&compiled);
-        let binary = pydead_bib::backend::output::emit(&stamped);
+        let optimized = adead_bib::backend::optimizer::optimize(&ir);
+        let allocated = adead_bib::backend::reg_alloc::allocate(&optimized);
+        let compiled = adead_bib::backend::isa::compile(&allocated, Target::Windows);
+        let stamped = adead_bib::backend::bg::stamp(&compiled);
+        let binary = adead_bib::backend::output::emit(&stamped);
 
         // Write output
         let out_name = Path::new(file)
