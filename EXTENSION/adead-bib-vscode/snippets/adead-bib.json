@@ -1,0 +1,149 @@
+{
+  "Main Function": {
+    "prefix": "fn main",
+    "body": [
+      "fn main() {",
+      "    $0",
+      "}"
+    ],
+    "description": "Función principal main()"
+  },
+  "Function": {
+    "prefix": "fn",
+    "body": [
+      "fn ${1:nombre}(${2:params}) {",
+      "    $0",
+      "}"
+    ],
+    "description": "Definir una función"
+  },
+  "Let Variable": {
+    "prefix": "let",
+    "body": "let ${1:nombre} = ${2:valor}",
+    "description": "Declarar variable con let"
+  },
+  "Const Variable": {
+    "prefix": "const",
+    "body": "const ${1:NOMBRE} = ${2:valor}",
+    "description": "Declarar constante"
+  },
+  "Print": {
+    "prefix": "print",
+    "body": "print(${1:\"mensaje\"})",
+    "description": "Imprimir sin salto de línea"
+  },
+  "Println": {
+    "prefix": "println",
+    "body": "println(${1:\"mensaje\"})",
+    "description": "Imprimir con salto de línea"
+  },
+  "If Statement": {
+    "prefix": "if",
+    "body": [
+      "if ${1:condicion} {",
+      "    $0",
+      "}"
+    ],
+    "description": "Estructura if"
+  },
+  "If Else": {
+    "prefix": "ifelse",
+    "body": [
+      "if ${1:condicion} {",
+      "    $2",
+      "} else {",
+      "    $0",
+      "}"
+    ],
+    "description": "Estructura if-else"
+  },
+  "While Loop": {
+    "prefix": "while",
+    "body": [
+      "while ${1:condicion} {",
+      "    $0",
+      "}"
+    ],
+    "description": "Bucle while"
+  },
+  "For Loop": {
+    "prefix": "for",
+    "body": [
+      "for ${1:i} in ${2:0}..${3:10} {",
+      "    $0",
+      "}"
+    ],
+    "description": "Bucle for"
+  },
+  "Struct": {
+    "prefix": "struct",
+    "body": [
+      "struct ${1:Nombre} {",
+      "    ${2:campo}: ${3:tipo}",
+      "}"
+    ],
+    "description": "Definir estructura"
+  },
+  "Trait": {
+    "prefix": "trait",
+    "body": [
+      "trait ${1:Nombre} {",
+      "    fn ${2:metodo}(&self)${3: -> tipo}",
+      "}"
+    ],
+    "description": "Definir trait"
+  },
+  "Impl": {
+    "prefix": "impl",
+    "body": [
+      "impl ${1:Nombre} {",
+      "    fn ${2:metodo}(&self) {",
+      "        $0",
+      "    }",
+      "}"
+    ],
+    "description": "Implementación"
+  },
+  "CPU Block": {
+    "prefix": "cpu",
+    "body": [
+      "cpu:: {",
+      "    $0",
+      "}"
+    ],
+    "description": "Bloque CPU directo"
+  },
+  "GPU Block": {
+    "prefix": "gpu",
+    "body": [
+      "gpu:: {",
+      "    $0",
+      "}"
+    ],
+    "description": "Bloque GPU directo"
+  },
+  "Emit HEX": {
+    "prefix": "emit",
+    "body": "emit![${1:0x90}]",
+    "description": "Emitir bytes HEX directos"
+  },
+  "HEX Literal": {
+    "prefix": "hex",
+    "body": "0x${1:00}",
+    "description": "Literal hexadecimal"
+  },
+  "ADead-BIB Header": {
+    "prefix": "header",
+    "body": [
+      "// ============================================================================",
+      "// ${1:Nombre del archivo}",
+      "// ============================================================================",
+      "// ${2:Descripción}",
+      "// Ejecutar: adB run ${3:main.adB}",
+      "// ============================================================================",
+      "",
+      "$0"
+    ],
+    "description": "Header estándar ADead-BIB"
+  }
+}

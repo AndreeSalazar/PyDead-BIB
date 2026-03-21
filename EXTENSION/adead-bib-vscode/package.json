@@ -1,0 +1,131 @@
+{
+  "name": "adead-bib",
+  "displayName": "ADead-BIB",
+  "description": "Soporte para el lenguaje ADead-BIB - OOP Puro + ASM Simbionte",
+  "version": "1.0.0",
+  "publisher": "adead-bib",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets"
+  ],
+  "keywords": [
+    "adead-bib",
+    "adB",
+    "binary",
+    "asm",
+    "oop"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AndreeSalazar/ADead-BIB"
+  },
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onLanguage:adead-bib"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "adead-bib",
+        "aliases": [
+          "ADead-BIB",
+          "adB"
+        ],
+        "extensions": [
+          ".adB"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "adead-bib",
+        "scopeName": "source.adB",
+        "path": "./syntaxes/adead-bib.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "adead-bib.showMenu",
+        "title": "ADead-BIB: Menú",
+        "icon": "$(menu)"
+      },
+      {
+        "command": "adead-bib.build",
+        "title": "ADead-BIB: Build",
+        "icon": "$(tools)"
+      },
+      {
+        "command": "adead-bib.run",
+        "title": "ADead-BIB: Run",
+        "icon": "$(play)"
+      },
+      {
+        "command": "adead-bib.check",
+        "title": "ADead-BIB: Check Syntax",
+        "icon": "$(check)"
+      },
+      {
+        "command": "adead-bib.opt",
+        "title": "ADead-BIB: Build Optimized",
+        "icon": "$(rocket)"
+      },
+      {
+        "command": "adead-bib.playground",
+        "title": "ADead-BIB: Playground",
+        "icon": "$(terminal)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "adead-bib.run",
+        "key": "f5",
+        "when": "editorLangId == adead-bib"
+      },
+      {
+        "command": "adead-bib.build",
+        "key": "ctrl+shift+b",
+        "when": "editorLangId == adead-bib"
+      },
+      {
+        "command": "adead-bib.check",
+        "key": "ctrl+shift+c",
+        "when": "editorLangId == adead-bib"
+      }
+    ],
+    "configuration": {
+      "title": "ADead-BIB",
+      "properties": {
+        "adead-bib.compilerPath": {
+          "type": "string",
+          "default": "adB",
+          "description": "Ruta al compilador ADead-BIB (adB o adeadc)"
+        },
+        "adead-bib.showDiagnostics": {
+          "type": "boolean",
+          "default": true,
+          "description": "Mostrar diagnósticos en tiempo real"
+        }
+      }
+    },
+    "snippets": [
+      {
+        "language": "adead-bib",
+        "path": "./snippets/adead-bib.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "@types/vscode": "^1.74.0",
+    "typescript": "^5.0.0"
+  }
+}

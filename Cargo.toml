@@ -1,17 +1,26 @@
 [package]
-name = "pydead-bib"
-version = "4.0.0"
+name = "adead-bib"
+version = "1.2.0"
 edition = "2021"
 
 [dependencies]
 nom = "7.1"
+object = { version = "0.36", features = ["write_core"] }  # Para generar PE/ELF
+goblin = "0.7"   # Para parsing de binarios (opcional)
+pelite = "0.10"  # Para generar PE válidos
+
+
+# Vulkan - Para exprimir GPU con fuerza
+ash = "0.38"                    # Vulkan bindings (bajo nivel, máximo control)
+gpu-allocator = "0.27"          # Allocator de memoria GPU
 
 [lib]
-name = "pydead_bib"
+name = "adead_bib"
 path = "src/rust/lib.rs"
 
 [[bin]]
-name = "pyb"
+name = "adb"
 path = "src/rust/main.rs"
 
-# PyDead-BIB — Python → x86-64 nativo — Sin CPython — Sin GIL — Sin runtime
+# ADead-BIB es 100% Rust - No requiere dependencias de C++
+

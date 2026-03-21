@@ -1,0 +1,20 @@
+; ADead-BIB GPU Program: matmul
+; Instructions: 13
+; ============================================================
+
+0000: 0100DAC000                               ; Inicializar contexto CUDA
+0005: 1000DAC0020000400000000000               ; Reservar 4194304 bytes en reg0
+0012: 1000DAC0020000400001000000               ; Reservar 4194304 bytes en reg1
+001F: 1000DAC0020000400002000000               ; Reservar 4194304 bytes en reg2
+002C: 1200DAC003001000000000000000004000       ; Copiar a GPU
+003D: 1200DAC003002000000100000000004000       ; Copiar a GPU
+004E: 2000DAC006000000000100000002000000000400000004000000040000 ; MatMul 1024x1024 @ 1024x1024
+006B: F000DAC000                               ; Sincronizar
+0070: 1300DAC003020000000030000000004000       ; Copiar de GPU
+0081: 1100DAC00100000000                       ; Liberar reg0
+008A: 1100DAC00101000000                       ; Liberar reg1
+0093: 1100DAC00102000000                       ; Liberar reg2
+009C: FFFFDAC000                               ; Fin del programa
+
+; ============================================================
+; Total size: 161 bytes

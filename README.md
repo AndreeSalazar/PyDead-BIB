@@ -1,538 +1,743 @@
-# PyDead-BIB 💀🦈
+# ADead-BIB v8.0 💀🦈
 
-> **Python → x86-64 Nativo — Sin CPython — Sin GIL — Sin Runtime**
+**Compilador Nativo: C99 · C++17 → Machine Code Puro · 256-bit Nativo**
 
-[![Rust](https://img.shields.io/badge/Rust-1.75+-orange.svg)](https://www.rust-lang.org/)
-[![License](https://img.shields.io/badge/License-Techne%20v1.0-purple.svg)](TECHNE_LICENSE_v1.0.license)
-[![Version](https://img.shields.io/badge/Version-4.0.0-green.svg)](https://github.com/AndreeSalazar/PyDead-BIB)
-[![Tests](https://img.shields.io/badge/Tests-83%2F83%20PASS-brightgreen.svg)](https://github.com/AndreeSalazar/PyDead-BIB)
-[![JIT](https://img.shields.io/badge/JIT%20KILLER-v2.0-ff00ff.svg)](https://github.com/AndreeSalazar/PyDead-BIB)
+> Zero Overhead · Zero Bloat · Zero Dead Code  
+> Sin NASM · Sin LLVM · Sin GCC · Sin Clang  
+> Sin libc externa · Sin linker · 100% Autosuficiente  
+> FASM-style: bytes directos al CPU  
+> 256-bit nativo: YMM/AVX2 · SoA natural · VEX prefix  
+> `#include <header_main.h>` = TODO disponible
 
-```text
-Guido van Rossum: 'readability counts'
-Dennis Ritchie:   'small is beautiful'
-Grace Hopper:     'la máquina sirve al humano'
-PyDead-BIB 2026:  hereda ADead-BIB v8.0 — Python nativo — 16→256 bits
+```
+Tu Código (.c / .cpp)
+        ↓
+┌───────────────────────────────────────────┐
+│          ADead-BIB Compiler (adb)         │
+│                                           │
+│  .c  → Preprocessor → Lexer → Parser      │
+│  .cpp → Preprocessor → Lexer → Parser     │
+│                    ↓                      │
+│             CToIR / CppToIR               │
+│                    ↓                      │
+│             Program (IR)                  │
+│                    ↓                      │
+│             IsaCompiler                   │
+│             (ADeadOp stream)              │
+│                    ↓                      │
+│             Optimizer                     │
+│             (DCE, Fold, Inline, Peep)     │
+│                    ↓                      │
+│             BitResolver (v8.0)            │
+│             (16/32/64/128/256 bits)       │
+│                    ↓                      │
+│             SoA Optimizer                 │
+│             (float arr[8] → YMM register) │
+│                    ↓                      │
+│             Encoder + VEX Emitter         │
+│             (FASM-style, x86-64/AVX2)     │
+│                    ↓                      │
+│             PE / ELF / Po                 │
+└───────────────────────────────────────────┘
+        ↓
+  .exe / .elf / .po / .bin
+  (Machine Code Puro · 256-bit)
 ```
 
 ---
 
-## ¿Qué es PyDead-BIB?
+## Tabla de Contenidos
 
-**PyDead-BIB** es el primer compilador que transforma código Python directamente a ejecutables nativos x86-64, sin depender de CPython, PyPy, ni ningún runtime.
+1. [Filosofía](#filosofía)
+2. [Instalación](#instalación)
+3. [Inicio Rápido](#inicio-rápido)
+4. [Step Compiler](#step-compiler)
+5. [Frontends: C99 y C++17](#frontends-c99-y-c17)
+6. [256-bit Pipeline (v8.0)](#256-bit-pipeline-v80)
+7. [Referencia Técnica](#referencia-técnica)
+8. [Estructura del Proyecto](#estructura-del-proyecto)
+9. [Tamaños de Binario](#tamaños-de-binario)
+10. [Resultados de Tests](#resultados-de-tests)
+11. [Comandos CLI](#comandos-cli)
+12. [GPU Backend](#gpu-backend)
 
-| Caracteristica | CPython | PyPy | Nuitka | PyDead-BIB |
-| --- | --- | --- | --- | --- |
-| Sin runtime | ❌ 30MB | ❌ 200MB | ❌ 8MB | ✅ **0 bytes** |
-| Sin GIL | ❌ | ❌ | ❌ | ✅ |
-| Sin GCC/LLVM | ✅ | ✅ | ❌ | ✅ |
-| 256-bit SIMD | ❌ | ❌ | ❌ | ✅ AVX2 |
-| UB compile-time | ❌ | ❌ | ❌ | ✅ 13+ tipos |
-| Hello World | 30MB | 200MB | 8MB | **~2KB** |
+---
+
+## Filosofía
+
+### ¿Por qué existe ADead-BIB?
+
+Los compiladores industriales (MSVC, GCC, Clang/LLVM) son **referencias técnicas invaluables** — definieron cómo se compila C y C++ durante décadas. ADead-BIB los estudia, los respeta, y toma sus decisiones de ABI y calling convention como referencia. Lo que rechaza es el overhead que arrastran.
+
+| Referencia | Lo que ADead-BIB toma | Lo que ADead-BIB rechaza |
+|---|---|---|
+| **MSVC** | Windows x64 ABI (RCX, RDX, R8, R9), shadow space 32 bytes, PE format | Runtime >100 KB, CRT implícito, excepciones SEH |
+| **GCC** | System V AMD64 ABI (RDI, RSI, RDX, RCX), ELF format, optimizaciones agresivas | Múltiples backends indirectos, código generado inflado |
+| **LLVM** | Concepto de IR intermedio, passes de optimización, instruction selection | IR genérico que no llega a bytes directos, overhead de abstracción |
+| **FASM** | **Generación directa de bytes sin ensamblador externo** | — (FASM es la referencia que ADead-BIB sigue fielmente) |
+
+**El resultado:** ADead-BIB genera binarios de **2–10 KB** donde GCC genera **50+ KB** y MSVC genera **100+ KB** para el mismo programa.
+
+---
+
+### Canon: C99 y C++98
+
+ADead-BIB compila **C99** y **C++98** como estándares canónicos — representan las intenciones más claras de estos lenguajes.
+
+**C99 — El Canon de C:**  
+`int` = 32 bits, `char` = 8 bits, `long long` = 64 bits — tamaños exactos.  
+Punteros = direcciones reales. `malloc/free` = control manual. `arr[i]` = `*(arr + i * sizeof(element))`.  
+El programador sabe exactamente qué bytes genera cada línea.
+
+**C++98 — El Canon de C++:**  
+Classes = structs con métodos. Vtable solo cuando hay `virtual`. Templates = monomorphización.  
+Constructores/Destructores = RAII sin overhead de excepciones.  
+**Zero overhead principle** — lo que no usas, no pagas.
+
+---
+
+### ¿Por qué ADead-BIB está escrito en Rust?
+
+Rust es el **guardián** que detecta los problemas que C y C++ no pueden ver en sí mismos:
+
+| Problema en C/C++ | Rust lo detecta porque... |
+|---|---|
+| Buffer overflow | Ownership + bounds checking |
+| Use-after-free | Borrow checker |
+| Data races | Send + Sync traits |
+| Null pointer | `Option<T>` obligatorio |
+| Memory leaks | RAII + Drop |
+
+**Rust no es el lenguaje que ADead-BIB compila — es el lenguaje que garantiza que ADead-BIB compile correctamente.**
+
+---
+
+### Eliminación Absoluta
+
+Todo lo que no contribuye a la ejecución final se elimina:
+
+```
+Exceptions try/catch/throw     → error codes (cero stack unwinding)
+RTTI (typeid, dynamic_cast)    → eliminado si no se usa
+Smart pointers (unique/shared) → raw pointers (cero reference counting)
+STL containers overhead        → inlined (solo operaciones usadas)
+Funciones no llamadas          → eliminadas por DCE
+Variables no leídas            → eliminadas por DCE
+Branches inalcanzables         → eliminadas por constant folding
+```
+
+**Machine Code Puro** = solo las instrucciones x86-64 que el CPU necesita ejecutar. Nada más.
 
 ---
 
 ## Instalación
 
-### Requisitos
-
-- **Rust 1.75+** ([rustup.rs](https://rustup.rs))
-- Windows 10/11 o Linux x64
-
-### Build
-
 ```bash
-# Clonar
-git clone https://github.com/tu-usuario/PyDead-BIB.git
-cd PyDead-BIB
-
-# Compilar
+# 1. Clonar y compilar
+git clone https://github.com/AndreeSalazar/ADead-BIB.git
+cd ADead-BIB
 cargo build --release
 
-# El ejecutable está en:
-# Windows: target/release/pyb.exe
-# Linux:   target/release/pyb
+# 2. Agregar adb al PATH
+#    Windows (PowerShell):
+$env:Path += ";C:\ruta\a\ADead-BIB\target\release"
+#    Permanente (Admin):
+[Environment]::SetEnvironmentVariable('Path', $env:Path + ';C:\ruta\a\ADead-BIB\target\release', 'User')
+
+#    Linux / macOS:
+export PATH="$PATH:$HOME/ADead-BIB/target/release"
+#    Permanente:
+echo 'export PATH="$PATH:$HOME/ADead-BIB/target/release"' >> ~/.bashrc
+
+#    FastOS: No necesita PATH — adb es nativo del sistema
+
+# 3. Instalar headers globales
+adb install
+
+# 4. Verificar
+adb --version
 ```
 
-### Agregar al PATH (opcional)
-
-```powershell
-# Windows PowerShell
-$env:PATH += ";$PWD\target\release"
-
-# Linux/macOS
-export PATH="$PATH:$PWD/target/release"
-```
+> `adb --version` muestra la ruta exacta y las instrucciones de PATH para tu sistema.
 
 ---
 
-## Uso Rápido
-
-### Compilar Python
+## Inicio Rápido
 
 ```bash
-# Compilación básica
-pyb py archivo.py -o output.exe
+adb create hola          # Proyecto C
+adb create mundo --cpp   # Proyecto C++
+cd hola
+adb run                  # Compila src/main.c → bin/hola.exe y ejecuta
+# → "Hola desde hola"
 
-# Target específico
-pyb py archivo.py --target windows    # PE x64
-pyb py archivo.py --target linux      # ELF x64
-pyb py archivo.py --target fastos256  # FastOS 256-bit
+adb cc hello.c -o hello.exe    # Compilar archivo suelto C
+adb cxx app.cpp -o app.exe     # Compilar archivo suelto C++
+adb run test.c                 # Compilar y ejecutar directo
 
-# Compilar y ejecutar
-pyb run archivo.py
+adb gpu                        # GPU (SPIR-V directo)
+adb step main.c                # Step Compiler — ver cada fase
 ```
 
-### Step Mode — Ver las 11 fases
+### Estructura de Proyecto (`adb create`)
+
+```
+hola/
+├── adb.toml           # Configuración del proyecto
+│     [project]
+│     name    = "hola"
+│     version = "0.1.0"
+│     lang    = "c"       # o "cpp"
+│     standard= "c99"     # o "cpp17"
+│
+│     [build]
+│     src     = "src/"
+│     include = "include/"
+│     output  = "bin/"
+│
+├── include/
+│   └── header_main.h   ← todo disponible
+├── src/
+│   └── main.c
+└── bin/                ← output de compilación
+```
+
+### Resolución de Headers (sin flags -I)
+
+`#include <header.h>` busca en este orden:
+
+1. `include/` del proyecto
+2. `~/.adead/include/` (headers globales de `adb install`)
+3. stdlib interna — C99/C++ completa (fallback)
+
+Sin `-I flags`, sin CMake, sin Makefile.
+
+---
+
+## v8.0 — 256-bit Nativo + Autosuficiencia Total
+
+```c
+// Un solo include. Todo disponible. Sin linker. 256-bit nativo.
+#include <header_main.h>
+
+int main() {
+    printf("Hello from ADead-BIB v8.0!\n");
+
+    // SoA natural → detectado automáticamente → YMM register
+    float pos_x[8] = {1,2,3,4,5,6,7,8};
+    float pos_y[8] = {8,7,6,5,4,3,2,1};
+
+    // 8 sumas en 1 instrucción: VADDPS ymm0, ymm0, ymm1
+    for (int i = 0; i < 8; i++)
+        pos_x[i] += pos_y[i];
+
+    return 0;
+}
+```
+
+- **Sin libc externa** — toda la stdlib C/C++ está implementada internamente
+- **Sin linker** — unity build, todo compila a un solo IR y un solo binario
+- **Tree shaking** — solo las funciones que usas llegan al binario final
+- **256-bit nativo** — `float arr[8]` detectado como SoA → YMM register automático
+- **BitResolver** — detecta automáticamente si compilar a 16/32/64/128/256 bits
+- **VEX Emitter** — genera VEX prefix C4/C5 para instrucciones AVX2
+- **Po v8.0** — header de 32 bytes con `ymm_used`, `soa_map`, `bg_stamp`
+- **`fastos_*.h`** — headers individuales para control granular (`fastos_stdio.h`, `fastos_math.h`, etc.)
+
+---
+
+## Step Compiler
 
 ```bash
-pyb step archivo.py
+adb step main.c
 ```
 
-```text
-╔══════════════════════════════════════════════════════════════╗
-║   PyDead-BIB Step Compiler — Deep Analysis Mode 💀🦈         ║
-╚══════════════════════════════════════════════════════════════╝
-  Source:   archivo.py
-  Language: Python 3.x
+Muestra cada fase del pipeline en tiempo real:
 
---- Phase 01: PREPROCESSOR ---
-[PREPROC]  encoding: UTF-8 detectado
-[PREPROC]  source: 25 lines
+```
+[SOURCE]   12 lines, 245 bytes
 
---- Phase 02: IMPORT ELIMINATOR ---
-[IMPORT]   math → SIMD inline
-[IMPORT]   sin site-packages — NUNCA
+--- Phase 1: PREPROCESSOR ---
+[PREPROC]  165 lines after preprocessing
+[PREPROC]  #include <stdio.h> -> resolved internally
 
---- Phase 03: LEXER ---
-[LEXER]    127 tokens generados
-[LEXER]    INDENT/DEDENT: 8/8 pares
+--- Phase 2: LEXER ---
+[LEXER]    78 tokens generated
+[LEXER]       1:0    Int                      OK
+[LEXER]       1:1    Identifier("main")       OK
 
---- Phase 04: PARSER ---
-[PARSER]   AST generated — 5 top-level nodes
-[PARSER]     fn main(0 params)
+--- Phase 3: PARSER ---
+[PARSER]   function 'main' (0 params, 3 stmts) OK
+[PARSER]   Total: 1 functions, 0 structs, 28 typedefs
 
---- Phase 05: TYPE INFERENCER ---
-[TYPES]    type inference complete
+--- Phase 4: IR ---
+[IR]       function 'main' -> 5 IR statements OK
+[IR]         VarDecl { var_type: I32, name: "x", value: Some(Number(42)) }
+[IR]         Println(String("Hello"))
 
---- Phase 06: IR (ADeadOp SSA-form) ---
-[IR]       2 functions compiled
-[IR]       15 IR statements total
-[IR]       GIL eliminado — ownership estático ✓
+--- Phase 5: UB DETECTOR ---
+[UB]       No undefined behavior detected OK
 
---- Phase 07: UB DETECTOR ---
-[UB]       ✓ CLEAN — sin undefined behavior detectado
+--- Phase 6: CODEGEN (x86-64) ---
+[CODEGEN]  127 bytes of machine code generated
+[CODEGEN]  First 16 bytes:
+[CODEGEN]    E9 00 00 00 00 55 48 89 E5 53 41 54 56 57 48 81
 
-✅ Frontend compilation complete
-   Sin CPython — Sin GIL — Sin runtime 💀🦈
+--- Phase 7: OUTPUT ---
+[OUTPUT]   Target: Windows PE x86-64
+[OUTPUT]   Code: 127 bytes  |  Data: 32 bytes
+[OUTPUT]   Est. binary: ~1183 bytes
 ```
 
-### Crear Proyecto
+Funciona con C y C++: `adb step archivo.c` o `adb step archivo.cpp`
 
-```bash
-pyb create mi_app
-cd mi_app
-pyb run src/main.py
+---
+
+## Frontends: C99 y C++17
+
+### C99 — Canon de C
+
+**Pipeline:** `C source → Preprocessor → Lexer → Parser → AST → IR → IsaCompiler → Encoder → x86-64 → PE/ELF`
+
+| Característica | Estado | Intención |
+|---|---|---|
+| Variables y tipos (`int`, `char`, `float`, `double`, ...) | ✅ | Tamaños exactos → registros correctos |
+| Punteros y aritmética de punteros | ✅ | Direcciones reales, stride por `sizeof` |
+| Arrays y acceso directo | ✅ | `arr[i]` = `*(arr + i * size)` |
+| Structs, unions, typedefs | ✅ | Layout en memoria explícito |
+| Enums | ✅ | Constantes enteras |
+| Function pointers | ✅ | `call reg` directo |
+| Preprocesador (`#include`, `#define`, `#ifdef`) | ✅ | 75+ headers de sistema inyectados |
+| Control de flujo (`if`, `for`, `while`, `switch`) | ✅ | Branch → `jcc` directo |
+| Recursión | ✅ | Stack frame real por llamada |
+| `malloc/free` | ✅ | Enlace directo Win32 API / Linux syscall |
+| Bitwise (`&`, `\|`, `^`, `<<`, `>>`, `~`) | ✅ | Instrucciones x86-64 directas |
+| Operadores compuestos (`+=`, `-=`, `*=`, ...) | ✅ | In-place, sin temporales |
+
+### C++17 — Canon de C++ (Zero Overhead)
+
+**Pipeline:** `C++ source → Preprocessor → Lexer → Parser → AST → IR → IsaCompiler → Encoder → x86-64 → PE/ELF`
+
+| Característica | Estado | Cómo lo compila ADead-BIB |
+|---|---|---|
+| Classes (campos, métodos, constructores, destructores) | ✅ | `struct` + funciones con `this` pointer |
+| Herencia (single, multiple) | ✅ | Campos concatenados + vtable si hay `virtual` |
+| Virtual functions | ✅ | Devirtualizadas cuando es posible |
+| Templates (function, class) | ✅ | Monomorphización — solo instancias usadas |
+| Namespaces (anidados, `using`) | ✅ | Prefijo de nombres, cero costo runtime |
+| Operator overloading | ✅ | Inline a instrucciones directas |
+| `auto`, `constexpr`, `nullptr`, `enum class` | ✅ | Resueltos en compilación |
+| Range-for | ✅ | Loop con índice, sin iterador runtime |
+| Lambdas | ✅ | Closure inline, captures resueltos |
+| Casts (`static_cast`, `reinterpret_cast`, ...) | ✅ | Resueltos en compilación o eliminados |
+| **Exceptions (try/catch/throw)** | ✅ → eliminados | Convertidos a error codes |
+| **Smart pointers (unique_ptr, shared_ptr)** | ✅ → eliminados | Convertidos a raw pointers |
+| **RTTI (typeid, dynamic_cast runtime)** | ✅ → eliminado | Si no se usa, no existe |
+
+---
+
+## 256-bit Pipeline (v8.0)
+
+ADead-BIB v8.0 introduce soporte nativo para registros YMM (256-bit) via AVX2, con detección automática de patrones SoA (Structure-of-Arrays).
+
+### BitResolver — Detección automática de ancho
+
+El BitResolver analiza el IR y decide el ancho óptimo de compilación:
+
+| Target | Bits | Registros | Uso |
+|---|---|---|---|
+| `boot16` | 16 | AX-DX | Stage1 bootloader |
+| `boot32` | 32 | EAX-EDI | Stage2 protected mode |
+| `fastos64` | 64 | RAX-R15 | FastOS standard |
+| `fastos128` | 128 | XMM0-XMM15 | SSE/SSE4.2 vectorial |
+| `fastos256` | 256 | **YMM0-YMM15** | **AVX2 nativo** ★ |
+
+### SoA Optimizer — Vectorización natural
+
+```c
+// ADead-BIB detecta este patrón automáticamente:
+float pos_x[8];   // 8 × float32 = 256 bits → YMM0
+float pos_y[8];   // 8 × float32 = 256 bits → YMM1
+float vel_x[8];   // 8 × float32 = 256 bits → YMM2
+
+// Este loop se compila a UNA instrucción:
+for (int i = 0; i < 8; i++)
+    pos_x[i] += vel_x[i];
+// → VADDPS ymm0, ymm0, ymm2    (8 sumas en 1 ciclo)
 ```
 
-Estructura generada:
+| Tipo | Elementos/YMM | Instrucción |
+|---|---|---|
+| `float` (32-bit) | 8 | VADDPS, VMULPS, VFMADD231PS |
+| `double` (64-bit) | 4 | VADDPD, VMULPD |
+| `int` (32-bit) | 8 | VPADDD, VPCMPEQD |
 
-```text
-mi_app/
-├── pyb.toml        # Configuración del proyecto
-└── src/
-    └── main.py     # Código fuente
+### VEX Emitter — Encoding directo
+
+Genera VEX prefix C4/C5 para todas las instrucciones AVX2:
+
+```
+Instrucción              Bytes                  Encoding
+──────────────────────────────────────────────────────────────
+VADDPS ymm0,ymm0,ymm1   C5 FC 58 C1           VEX.256.0F 58 /r
+VMOVAPS ymm0,[rbp-32]    C5 FC 28 45 E0        VEX.256.0F 28 /r
+VFMADD231PS ymm0,y1,y2   C4 E2 75 B8 C2        VEX.256.66.0F38 B8 /r
+VZEROUPPER               C5 F8 77              VEX.128.0F 77
+```
+
+### Po v8.0 — Header de 32 bytes
+
+```
+Offset  Size  Field       Description
+──────────────────────────────────────────
+0x00    4     magic       0x506F4F53 ('PoOS')
+0x04    1     version     0x80 (v8.0)
+0x05    1     bits        16/64/128/0xFF(256)
+0x06    2     ymm_used    bitmask YMM0-YMM15
+0x08    4     code_off    offset to .text
+0x0C    4     code_size   size of .text
+0x10    4     data_off    offset to .data
+0x14    4     data_size   size of .data
+0x18    4     soa_map     offset to SoA table
+0x1C    4     bg_stamp    BG verification hash
 ```
 
 ---
 
-## Sintaxis Python Soportada
+## Referencia Técnica
 
-### Python 2.7 → 3.13 Completo
+### Calling Conventions
 
-```python
-# Tipos y literales
-x: int = 42              # → RAX literal
-y: float = 3.14          # → XMM/YMM
-s: str = "hola"          # → .data section
-b: bool = True           # → 1 byte
+```
+Windows x64 (referencia MSVC):
+  Args:         RCX, RDX, R8, R9, stack
+  Ret:          RAX (int), XMM0 (float)
+  Shadow space: 32 bytes
+  Callee-saved: RBX, RBP, RDI, RSI, R12–R15
 
-# f-strings (3.6+)
-msg = f"Hola {name}"     # → string concat nativo
-
-# Walrus operator (3.8+)
-if (n := len(data)) > 10:
-    print(n)
-
-# Match/case (3.10+)
-match comando:
-    case "help": mostrar_ayuda()
-    case "exit": salir()
-    case _: error()
+System V AMD64 (referencia GCC):
+  Args:         RDI, RSI, RDX, RCX, R8, R9, stack
+  Ret:          RAX (int), XMM0 (float)
+  Red zone:     128 bytes
+  Callee-saved: RBX, RBP, R12–R15
 ```
 
-### Funciones y Clases
+ADead-BIB detecta el target automáticamente y usa la convención correcta.
 
-```python
-def suma(a: int, b: int) -> int:
-    return a + b           # → ADD RAX, RBX directo
+---
 
-class Jugador:
-    nombre: str
-    vida: int
-    
-    def __init__(self, nombre: str):
-        self.nombre = nombre
-        self.vida = 100
-    
-    def atacar(self) -> int:
-        return 10          # → vtable entry
+### Encoding FASM-Style (Bytes Directos)
+
 ```
-
-### Comprehensions → SIMD Automático
-
-```python
-# PyDead-BIB detecta: list[float] × 8
-velocidades = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
-dobles = [v * 2.0 for v in velocidades]
-# Genera: VMULPS ymm0, ymm1, [2.0×8]
-# 8 floats en 1 ciclo — sin loop
+Instrucción        Bytes            Encoding
+───────────────────────────────────────────────────
+mov rax, rbx       48 89 D8         REX.W + MOV r/m64, r64
+add rax, 42        48 83 C0 2A      REX.W + ADD r/m64, imm8
+call printf        E8 xx xx xx xx   CALL rel32
+ret                C3               RET
+push rbp           55               PUSH r64
+sub rsp, 32        48 83 EC 20      SUB r/m64, imm8
+xor eax, eax       31 C0            XOR r32, r32
 ```
 
 ---
 
-## UB Detection — Errores en Compile Time
+### Optimizaciones
 
-PyDead-BIB detecta errores **antes** de ejecutar:
+| Optimización | Referencia | Qué hace |
+|---|---|---|
+| Dead Code Elimination | GCC -O1, LLVM `dce` | Elimina funciones, variables y branches no usados |
+| Constant Folding | GCC -O1, LLVM `constprop` | `2 + 3 * 4` → `14` en compilación, 0 instrucciones runtime |
+| Inlining | GCC -O2, LLVM `inline` | Funciones pequeñas expandidas en el caller |
+| Peephole | GCC -O2 | `add reg, 1` → `inc reg`, `mov reg, reg` eliminado |
+| Register Allocation | GCC/LLVM `regalloc` | Temporales en R10–R15, minimiza push/pop |
+| Strength Reduction | GCC -O2 | `x * 0` → `0`, `x * 2` → `shl x, 1` |
+| Dynamic Stack Frame | ADead-BIB propio | Stack frame calculado exacto, no 128 bytes fijos |
 
-```python
-# ❌ CPython: RuntimeError
-# ✅ PyDead-BIB: Error en compilación
+---
 
-x = None
-print(x.nombre)          # NoneDeref detectado
+### ISA Layer: ADeadOp → x86-64
 
-lista = [1, 2, 3]
-print(lista[100])        # IndexOutOfBounds detectado
+| ADeadOp | Descripción | x86-64 |
+|---|---|---|
+| `Mov { dst, src }` | Mover datos | `89/8B` + ModR/M |
+| `Add { dst, src }` | Suma | `01/03` + ModR/M |
+| `Sub { dst, src }` | Resta | `29/2B` + ModR/M |
+| `Mul { src }` | Multiplicación | `F7 /4` |
+| `Div { src }` | División | `F7 /6` |
+| `Shl { dst, amount }` | Shift left | `C1 /4 imm8` |
+| `Shr { dst, amount }` | Shift right | `C1 /5 imm8` |
+| `Cmp { left, right }` | Comparar | `39/3B` |
+| `Jmp { target }` | Salto | `EB/E9` |
+| `Je/Jne/Jl/Jg` | Saltos condicionales | `74/75/7C/7F` |
+| `Call { target }` | Llamar función | `E8 rel32` |
+| `Ret` | Retornar | `C3` |
+| `Push { src }` | Push stack | `50+r` |
+| `Pop { dst }` | Pop stack | `58+r` |
+| `Cli` / `Sti` | Interrupciones | `FA` / `FB` |
+| `Hlt` | Halt CPU | `F4` |
+| `In { port, dst }` | Leer puerto I/O | `E4/EC` |
+| `Out { port, src }` | Escribir puerto I/O | `E6/EE` |
 
-def f(x=[]):             # MutableDefaultArg warning
-    x.append(1)          # Bug clásico Python → nunca más
+---
 
-"hola" + 42              # TypeMismatch detectado
+## Estructura del Proyecto
+
 ```
-
-### 13 Tipos de UB Detectados
-
-| UB | Descripción | CPython | PyDead-BIB |
-|----|-------------|---------|------------|
-| `NoneDeref` | `None.attr` | RuntimeError | ✅ Compile |
-| `IndexOutOfBounds` | `lista[100]` | IndexError | ✅ Compile |
-| `KeyNotFound` | `dict["x"]` | KeyError | ✅ Compile |
-| `TypeMismatch` | `"a" + 1` | TypeError | ✅ Compile |
-| `DivisionByZero` | `x / 0` | ZeroDivisionError | ✅ Compile |
-| `MutableDefaultArg` | `def f(x=[])` | Bug silencioso | ✅ Warning |
-| `InfiniteRecursion` | Sin base case | RecursionError | ✅ Compile |
-| `CircularImport` | A→B→A | ImportError | ✅ Compile |
-| `UnpackMismatch` | `a,b = [1,2,3]` | ValueError | ✅ Compile |
-
----
-
-## Configuración — pyb.toml
-
-```toml
-[project]
-name = "mi_app"
-version = "0.1.0"
-lang = "python"
-standard = "py3"
-
-[build]
-src = "src/"
-output = "bin/"
-
-[python]
-version = "3.11"          # Sintaxis target
-type_check = "strict"     # Inferencia estricta
-ub_mode = "strict"        # Detener en UB
-simd = "auto"             # AVX2 automático
-```
-
----
-
-## Arquitectura
-
-```text
-Python Source (.py)
-        │
-        ▼
-┌─────────────────────────────────────────────────────┐
-│  FRONTEND (★ PyDead-BIB v1.0)                       │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │
-│  │ Preprocessor│→ │Import Elim. │→ │   Lexer     │  │
-│  └─────────────┘  └─────────────┘  └─────────────┘  │
-│         │                                │          │
-│         ▼                                ▼          │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │
-│  │   Parser    │→ │Type Inferrer│→ │  IR Gen     │  │
-│  └─────────────┘  └─────────────┘  └─────────────┘  │
-└─────────────────────────────────────────────────────┘
-        │
-        ▼
-┌─────────────────────────────────────────────────────┐
-│  MIDDLE-END (heredado ADead-BIB v8.0)               │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │
-│  │ UB Detector │→ │  Optimizer  │→ │ Reg Alloc   │  │
-│  └─────────────┘  └─────────────┘  └─────────────┘  │
-└─────────────────────────────────────────────────────┘
-        │
-        ▼
-┌─────────────────────────────────────────────────────┐
-│  BACKEND (heredado ADead-BIB v8.0)                  │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │
-│  │Bit Resolver │→ │ISA Compiler │→ │ PE/ELF/Po   │  │
-│  └─────────────┘  └─────────────┘  └─────────────┘  │
-└─────────────────────────────────────────────────────┘
-        │
-        ▼
-   .exe / ELF / .po (nativo, sin runtime)
-```
-
----
-
-## Comparación de Performance
-
-```text
-Hello World:
-
-┌────────────────┬──────────────┬──────────────┐
-│ Implementación │ Tamaño       │ Startup      │
-├────────────────┼──────────────┼──────────────┤
-│ CPython 3.13   │ 30MB runtime │ ~50ms        │
-│ PyPy 7.3       │ 200MB        │ ~2s warmup   │
-│ Nuitka         │ 8MB          │ ~10ms        │
-│ PyDead-BIB     │ ~2KB         │ ~0.1ms       │
-└────────────────┴──────────────┴──────────────┘
-
-Bucle float × 8:
-
-numpy:           import 50ms + BLAS overhead
-PyDead-BIB:      VMULPS ymm0 directo — 8 floats/ciclo
-```
-
----
-
-## Targets de Salida
-
-| Target | Formato | Descripción |
-|--------|---------|-------------|
-| `--target windows` | `.exe` PE | Windows x64 nativo |
-| `--target linux` | ELF | Linux x64 nativo |
-| `--target fastos64` | `.po` v1 | FastOS 64-bit |
-| `--target fastos128` | `.po` v2 | FastOS SSE 128-bit |
-| `--target fastos256` | `.po` v8 | FastOS AVX2 256-bit |
-| `--target all` | Multi | Todos simultáneos |
-
----
-
-## Desarrollo
-
-### Estructura del Proyecto
-
-```text
-PyDead-BIB/
-├── Cargo.toml
+ADead-BIB/
 ├── src/rust/
-│   ├── lib.rs              # Biblioteca
-│   ├── main.rs             # CLI pyb
-│   ├── frontend/python/    # Frontend Python (★ nuevo)
-│   │   ├── py_preprocessor.rs
-│   │   ├── py_import_resolver.rs
-│   │   ├── py_lexer.rs
-│   │   ├── py_parser.rs
-│   │   ├── py_ast.rs
-│   │   ├── py_types.rs
-│   │   └── py_to_ir.rs
-│   └── middle/             # Middle-end
-│       ├── ir.rs
-│       └── ub_detector.rs
+│   ├── main.rs                        # CLI driver (adb)
+│   ├── lib.rs                         # Exports públicos
+│   ├── builder.rs                     # Orchestrator del pipeline
+│   │
+│   ├── cli/                           # Terminal UI (ANSI, phase bars)
+│   │
+│   ├── frontend/                      # Frontends C99 y C++17
+│   │   ├── ast.rs                     # IR compartido
+│   │   ├── types.rs                   # Sistema de tipos
+│   │   ├── type_checker.rs            # Análisis estático
+│   │   ├── c/                         # C99: lexer, parser, AST, IR, preprocessor, stdlib
+│   │   └── cpp/                       # C++: lexer, parser, AST, IR, preprocessor, STL stubs
+│   │
+│   ├── preprocessor/                  # Sin CMake, sin linker
+│   │   ├── resolver.rs                # Header resolution
+│   │   ├── dedup.rs                   # Symbol deduplication
+│   │   └── expander.rs                # C++17 → C++98 canon (34 features)
+│   │
+│   ├── stdlib/                        # Standard library propia
+│   │   ├── header_main.rs             # header_main.h — hereda TODO
+│   │   ├── c/                         # C99: stdio, stdlib, string, math...
+│   │   └── cpp/                       # C++: iostream, vector, map, memory...
+│   │
+│   ├── middle/                        # Middle-end (IR avanzado)
+│   │   ├── ir/                        # SSA IR
+│   │   ├── ub_detector/               # 21+ tipos de UB detection
+│   │   │   ├── null_check.rs          # NullPointerDereference
+│   │   │   ├── bounds_check.rs        # ArrayOutOfBounds
+│   │   │   ├── overflow_check.rs      # IntegerOverflow / DivByZero
+│   │   │   ├── uninit_check.rs        # UninitializedVariable
+│   │   │   ├── useafter_check.rs      # UseAfterFree / DanglingPtr
+│   │   │   ├── lifetime.rs            # DoubleFree / lifetime analysis
+│   │   │   └── format_check.rs        # FormatStringMismatch
+│   │   ├── analysis/                  # CFG, dominator tree, loops
+│   │   └── passes/                    # Transform passes (DCE, GVN, LICM, inline...)
+│   │
+│   ├── optimizer/                     # AST-level optimizations
+│   │   ├── const_fold.rs / const_prop.rs / dead_code.rs
+│   │   ├── inline_exp.rs / branchless.rs / simd.rs
+│   │   └── binary_optimizer.rs        # Binary-level size optimization
+│   │
+│   ├── isa/                           # ISA Layer — el núcleo
+│   │   ├── isa_compiler.rs            # Program IR → ADeadOp stream
+│   │   ├── encoder.rs                 # ADeadOp → x86-64 bytes (FASM-style)
+│   │   ├── decoder.rs                 # x86-64 → ADeadOp (disassembly)
+│   │   ├── optimizer.rs               # Peephole optimization
+│   │   ├── reg_alloc.rs               # Register allocator
+│   │   ├── bit_resolver.rs            # v8.0: BitTarget 16→256, SoA detection
+│   │   ├── soa_optimizer.rs           # v8.0: SoA pattern detection (float[8]→YMM)
+│   │   ├── ymm_allocator.rs           # v8.0: YMM0-YMM15 register allocation
+│   │   ├── vex_emitter.rs             # v8.0: VEX C4/C5 prefix encoding
+│   │   └── compiler/                  # expressions, statements, control_flow, functions, arrays
+│   │
+│   ├── output/                        # Binary output (sin linker)
+│   │   ├── pe.rs                      # Windows PE (.exe)
+│   │   ├── elf.rs                     # Linux ELF
+│   │   └── po.rs                      # FastOS .po v8.0 (32-byte header, YMM/SoA/BG)
+│   │
+│   ├── backend/
+│   │   ├── cpu/                       # x86-64: PE, ELF, flat binary, MicroVM, syscalls, Win32
+│   │   └── gpu/                       # Vulkan, SPIR-V, CUDA, HIP, unified CPU↔GPU pipeline
+│   │
+│   ├── bg/                            # Binary Guardian (security policy)
+│   ├── cache/                         # FastOS.BIB Cache v2 (FNV-1a)
+│   ├── runtime/                       # CPU/GPU feature detection + dispatch
+│   └── toolchain/                     # Calling conventions, GCC/Clang/MSVC compat, name mangling
+│
+├── examples/
+│   ├── c/                             # 34 archivos C99  — todos compilan ✅
+│   ├── cpp/                           # 22 archivos C++  — todos compilan ✅
+│   ├── boot/                          # Boot sectors, kernels
+│   └── gpu/                           # GPU compute shaders
+│
+├── Test-Canon/                        # Canon verification suite (48 tests)
+├── Test-UB-Global/                    # Global UB test suite
+├── ub_tests/                          # UB detection tests
+├── EXTENSION/                         # VS Code extension
+├── Cargo.toml                         # 100% Rust, sin deps de C/C++
+├── ARCHITECTURE.md
+└── README.md
 ```
 
-### Comandos de Desarrollo
+---
+
+## Tamaños de Binario
+
+| Programa | ADead-BIB | GCC -Os | MSVC /O1 |
+|---|---|---|---|
+| Hello World | **2.0 KB** | ~50 KB | ~100 KB |
+| Counter + printf | **2.0 KB** | ~50 KB | ~100 KB |
+| Recursión (fib, power) | **2.5 KB** | ~50 KB | ~100 KB |
+| Classes + OOP | **3.0 KB** | ~55 KB | ~110 KB |
+| Templates | **3.5 KB** | ~55 KB | ~110 KB |
+| Stdlib largo (~100 funcs) | **42 KB** | ~200 KB | ~300 KB |
+
+Sin CRT. Sin exception handling tables. Sin RTTI. Sin debug info por defecto. Solo machine code puro.
+
+---
+
+## Resultados de Tests
+
+| Frontend | Archivos | Pasan | Tasa |
+|---|---|---|---|
+| C99 examples | 34 | 34 | **100%** ✅ |
+| C++ examples | 22 | 22 | **100%** ✅ |
+| C99 Canon | 18 | 18 | **100%** ✅ |
+| C++98 Canon | 15 | 15 | **100%** ✅ |
+| Integration tests | 18 | 18 | **100%** ✅ |
+| FASE tests (C99+C++17+PE) | 19 | 19 | **100%** ✅ |
+| **Total Rust tests** | **580** | **580** | **100%** ✅ |
+
+```
+C99 Canon (18):   tipos, punteros, arrays, structs, unions, enums,
+                  typedef, control, funciones, function pointers,
+                  preprocesador, bitwise, casting, scope, strings,
+                  malloc, sizeof, expresiones complejas — ALL PASS ✅
+
+C++98 Canon (15): clases, herencia, virtual/polimorfismo, templates,
+                  namespaces, operator overload, referencias,
+                  const correctness, constructores, static members,
+                  punteros objetos, enum class, STL — ALL PASS ✅
+
+Integration (18): header_main.h C/C++, fastos_*.h, symbol registries,
+                  no-linker verification, full E2E programs — ALL PASS ✅
+```
+
+---
+
+## Comandos CLI
 
 ```bash
-# Build debug
-cargo build
+# Proyectos
+adb create hola              # Nuevo proyecto C
+adb create hola --cpp        # Nuevo proyecto C++
+adb build                    # Compilar proyecto (lee adb.toml)
+adb run                      # Compilar y ejecutar proyecto
 
-# Build release
-cargo build --release
+# C99
+adb cc hello.c -o hello.exe
+adb cc main.c                # → main.exe automático
 
-# Run tests
-cargo test
+# C++
+adb cxx app.cpp -o app.exe
+adb cxx main.cpp             # → main.exe automático
 
-# Ver versión
-pyb --version
+# Auto-detect
+adb build program.c          # Detecta .c → C99
+adb build program.cpp        # Detecta .cpp → C++
+adb run test.c               # Compilar y ejecutar
+
+# Headers globales
+adb install                  # Instala headers en ~/.adead/include/
+adb include                  # Muestra ruta de headers
+
+# Flat Binary (OS/Kernel)
+adb cc kernel.c -o kernel.bin --flat
+adb cc boot.c -o boot.bin --flat16 --org=0x7C00 --size=512
+
+# FastOS targets (v8.0)
+adb cc kernel.c --target fastos64 -o kernel.po
+adb cc kernel.c --target fastos128 -o kernel.po
+adb cc kernel.c --target fastos256 -o kernel.po   # 256-bit YMM/AVX2
+adb cc kernel.c --target boot16 -o stage1.bin
+adb cc kernel.c --target boot32 -o stage2.bin
+
+# Binarios mínimos
+adb nano output.exe          # PE más pequeño posible
+adb micro output.exe         # PE32 < 256 bytes
+
+# GPU
+adb gpu                      # Detectar GPU + generar shader
+adb spirv matmul 1024        # SPIR-V compute shader
+
+# Step Compiler
+adb step program.c           # Visualizar pipeline paso a paso
+
+# MicroVM
+adb vm program.c             # Compilar a MicroVM bytecode (4-bit ops)
+
+# Vulkan / CUDA
+adb vulkan shader.comp       # Compilar + ejecutar con Vulkan runtime
+adb cuda kernel.cu           # CUDA code generation
+
+# CPU↔GPU Hybrid
+adb unified program.c        # CPU↔GPU auto-dispatch pipeline
+
+# Auto-detect por extensión
+adb program.c                # → C99
+adb program.cpp              # → C++
 ```
 
 ---
 
-## Roadmap
+## GPU Backend
 
-### v1.2 — Real Runtime Output ✅
-
-- [x] 13/13 compilation phases
-- [x] PE/ELF/FastOS output
-- [x] print() real output via Win32 WriteFile
-- [x] Binary Guardian stamp
-
-### v1.3 — Arithmetic & Control Flow ✅
-
-- [x] float print, arithmetic (+,-,*,//,%,**)
-- [x] if/elif/else, for range(), while loops
-- [x] f-strings, AugAssign, SSE2 instructions
-
-### v1.4 — Data Structures ✅
-
-- [x] import math (sqrt, floor, ceil, sin, cos, log, pi, e)
-- [x] Lists (HeapAlloc, append, len, indexing)
-- [x] Dicts (HeapAlloc, open addressing)
-- [x] Classes (init, self.x, field access)
-- [x] Builtins: abs, min, max, chr, ord, tuple unpack
-
-### v1.5 — Standard Library & Package Manager ✅
-
-- [x] `pyb install` / `pyb list` — native package manager
-- [x] `import os` — getcwd, path.exists, getpid, mkdir, remove, rename, environ.get
-- [x] `import sys` — platform, version, maxsize, exit
-- [x] `import random` — seed, randint, random (xorshift64)
-- [x] `import json` — loads, dumps (stubs)
-- [x] `open()` — CreateFileA, read, write, close
-- [x] String methods — upper, lower, find, replace, startswith, endswith
-- [x] IAT expanded to 20 Win32 API slots
-
-### v2.0 — Python Standard Total ✅
-
-- [x] **ANSI terminal colors** — full colored compiler output with architecture diagram
-- [x] **UB error blocking** — compilation blocked with detailed error messages when UB detected
-- [x] **try/except/finally/raise** — error codes, handler jumps, finally blocks, raise with message
-- [x] **with statement** — context managers with auto-close for file handles
-- [x] **Inheritance** — class bases, parent field inheritance, method override
-- [x] **List comprehensions** — `__pyb_listcomp_range` runtime stub
-- [x] **Decorators** — class methods, static dispatch
-- [x] **async/await** — parser support, IR passthrough, Await expression handling
-- [x] **generators/yield** — parser support, Yield expression handling
-- [x] **Dataclasses** — class with `__init__`, field access, constructor
-- [x] **String formatting** — f-strings with expressions, format specs
-- [x] **Typing** — List, Dict, Optional, Union type hint passthrough
-- [x] **Import modules** — multi-module compilation, math/os/sys/random/json
-- [x] **numpy-native** — list-based SIMD arrays with HeapAlloc
-- [x] 36/36 pyb test PASS, 57/57 cargo test PASS
-
-### v3.0 — Production Ready ✅
-
-- [x] **async/await state machine** — CoroutineCreate/Resume/Yield IR, asyncio.run() routing
-- [x] **generators/yield** — GeneratorCreate/Next/Send IR, `__pyb_gen_next` runtime stub
-- [x] **@property / @lru\_cache** — PropertyGet/Set IR, LruCacheCheck/Store IR instructions
-- [x] **numpy AVX2 SIMD** — VMOVAPS/VADDPS/VMULPS/VSQRTPS YMM codegen, np.sum/max/min/dot stubs
-- [x] **C extension compatibility** — ctypes.CDLL routing, DllLoad/GetProc/Call IR instructions
-- [x] **Optimizer pipeline** — constant folding (int+float BinOp), dead code elimination (Nop removal)
-- [x] **sum()/next() builtins** — wired to numpy runtime stubs
-- [x] 44/44 pyb test PASS, 57/57 cargo test PASS
-
-### v4.0 — Distribution
-
-- [ ] PyPI-compatible distribution
-- [ ] Linux ELF syscall stubs (write/mmap/exit)
-- [ ] Cross-compilation targets
-- [ ] Incremental compilation
-
----
-
-## Licencia
-
-Este software esta protegido bajo la **TECHNE LICENSE v1.0**.
-
-> *"El arte pertenece al artesano. Su uso da frutos que deben compartirse."*
-
-```text
-TECHNE LICENSE v1.0 — Binary Is Binary
-Copyright (C) 2026 Eddi Andree Salazar Matos — Lima, Peru
+```
+Código ADead → AST → SPIR-V bytes (directo, sin IR intermedio)
 ```
 
-| Uso | Costo |
-| --- | --- |
-| Personal / individual | **GRATIS** |
-| Estudiantes / educacion | **GRATIS** |
-| Open source (OSI) | **GRATIS** |
-| ONG / nonprofit | **GRATIS** |
-| Startup < $1M/year | **GRATIS** |
-| Empresa > $1M revenue | **10% royalty** sobre revenue atribuible |
-| Enterprise / buyout | Negociable — contactar al autor |
+```python
+# FFI GPU (Python)
+from FFI_GPU import GPU
 
-Ver el archivo completo: [`TECHNE_LICENSE_v1.0.license`](TECHNE_LICENSE_v1.0.license)
+gpu = GPU()
+A = gpu.buffer(data_a)
+B = gpu.buffer(data_b)
+C = gpu.buffer(size=N)
 
-Contacto para licencias comerciales: **<eddi.salazar.dev@gmail.com>**
+kernel = gpu.load_spirv("vecadd.spv")
+gpu.dispatch(kernel, A, B, C, groups=(N//256, 1, 1))
+result = C.read()
+```
 
 ---
 
 ## Autor
 
-**Eddi Andree Salazar Matos**
-Lima, Peru 🇵🇪
-1 dev — Binary Is Binary 💀🦈
+**Eddi Andreé Salazar Matos**  
+eddi.salazar.dev@gmail.com  
+Hecho en Perú 🇵🇪
 
-GitHub: [github.com/AndreeSalazar](https://github.com/AndreeSalazar)
-Email: <eddi.salazar.dev@gmail.com>
+## Licencia
+
+**GNU General Public License v2.0**
+
+```
+Copyright (C) 2024–2026 Eddi Andreé Salazar Matos
+```
 
 ---
 
----
-
-## JIT KILLER v2.0 💀🦈
-
-> **"El CPU no piensa — ya sabe. La RAM no espera — ya recibe."**
-
-PyDead-BIB v4.0 includes the JIT KILLER v2.0 in-memory executor:
+**ADead-BIB v8.0: C99 · C++17 → Machine Code Puro · 256-bit Nativo 💀🦈**
 
 ```
-pyb run archivo.py    # compile + execute in RAM — no .exe written
+MSVC, GCC, LLVM  = referencias técnicas estudiadas y respetadas
+FASM             = el modelo de encoding directo que ADead-BIB sigue
+Rust             = el guardián que garantiza que el compilador nunca falle
+header_main.h    = un include, todo disponible
+adb create       = como cargo new, pero para C/C++
+YMM/AVX2         = 256-bit nativo, SoA natural, VEX prefix
 ```
 
-### 7 Mejoras Implementadas
+> *"C = intención absoluta del programador*  
+> *C++ = zero overhead principle*  
+> *Rust = guardián de correctitud*  
+> *FASM = bytes directos al CPU*  
+> *YMM = 256 bits nativos, 8 floats en paralelo*  
+> *ADead-BIB = único en el mundo 💀🦈 🇵🇪"*
 
-| # | Mejora | Descripcion | Impacto |
-| --- | --- | --- | --- |
-| 1 | **Step Mode Acelerado** | Timing real por fase en ms, time-to-binary metric | Visibilidad total |
-| 2 | **Pre-Resolved Dispatch Table** | IAT built once via LazyLock, reused across calls | 0 lookup per call |
-| 3 | **Thermal Cache** | FNV-1a hash source, skip recompilation on repeated runs | ~0.001ms 2nd run |
-| 4 | **Parallel Compilation** | Architecture ready for rayon multi-thread compile | Nx faster |
-| 5 | **Zero Copy Data** | .text PAGE_EXECUTE_READWRITE, .data PAGE_READWRITE only | Mas seguro |
-| 6 | **CPU Feature Detection** | CPUID inline asm: AVX2, SSE4.2, BMI2, CPU brand | Compile exacto |
-| 7 | **Instant Entry** | Pre-patch ALL fixups before memcpy, then JMP directo | 0 runtime patch |
-
-### Benchmark (AMD Ryzen 5 5600X)
-
+```bash
+adb create hola
+cd hola
+adb run
+# → "Hola desde hola" — 2KB, sin GCC, sin linker
 ```
-⚡ time-to-RAM: 0.305ms
-  compile:  0.280ms (13 phases)
-  JIT:      0.025ms
-    alloc:  0.006ms (.text RWX, .data RW)
-    patch:  0.005ms (instant image)
-    exec:   0.005ms
-
-CPU: AMD Ryzen 5 5600X 6-Core Processor
-AVX2: ✓  SSE4.2: ✓  BMI2: ✓
-```
-
-### v4.0 New Features
-
-- **Global State Tracker**: `GlobalLoad`/`GlobalStore` IR for Python `global` variables
-- **VirtualAlloc Executor**: In-memory JIT execution via `pyb run`
-- **Type Inferencer v2**: `StructLayout` with deep `__init__` inference, inheritance chains
-- **GPU Dispatch**: 10 GPU IR instructions, CUDA ctypes detection, AVX2-to-CUDA handoff
-- **JIT KILLER v2.0**: 7 performance improvements (see above)
-- **83/83 tests PASS** (57 cargo test PASS)
-
----
-
-*"Python sin runtime — sin GIL — sin CPython — sin linker — 16 hasta 256 bits"*
-*Licensed under Techne v1.0 — Lima, Peru 🇵🇪 — 2026*
