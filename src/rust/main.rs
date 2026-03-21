@@ -960,23 +960,54 @@ fn get_pyb_dir() -> String {
     }
 }
 
-fn print_usage(program: &str) {
+fn print_banner() {
     println!();
-    println!("{}{}╔══════════════════════════════════════════════════════════════╗{}", BOLD, CYAN, RESET);
-    println!("{}{}║   🛸 PyDead-BIB v2.0 — Python Native Compiler 💀🦈          ║{}", BOLD, CYAN, RESET);
-    println!("{}{}║   Sin CPython — Sin GIL — Sin Runtime                        ║{}", DIM, CYAN, RESET);
-    println!("{}{}╚══════════════════════════════════════════════════════════════╝{}", BOLD, CYAN, RESET);
+    println!("{}{}  ██████╗ ██╗   ██╗██████╗ ███████╗ █████╗ ██████╗       ██████╗ ██╗██████╗ {}", BOLD, CYAN, RESET);
+    println!("{}{}  ██╔══██╗╚██╗ ██╔╝██╔══██╗██╔════╝██╔══██╗██╔══██╗      ██╔══██╗██║██╔══██╗{}", BOLD, CYAN, RESET);
+    println!("{}{}  ██████╔╝ ╚████╔╝ ██║  ██║█████╗  ███████║██║  ██║█████╗██████╔╝██║██████╔╝{}", BOLD, MAGENTA, RESET);
+    println!("{}{}  ██╔═══╝   ╚██╔╝  ██║  ██║██╔══╝  ██╔══██║██║  ██║╚════╝██╔══██╗██║██╔══██╗{}", BOLD, MAGENTA, RESET);
+    println!("{}{}  ██║        ██║   ██████╔╝███████╗██║  ██║██████╔╝      ██████╔╝██║██████╔╝{}", BOLD, CYAN, RESET);
+    println!("{}{}  ╚═╝        ╚═╝   ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═════╝       ╚═════╝ ╚═╝╚═════╝ {}", BOLD, CYAN, RESET);
     println!();
-    println!("{}Usage:{}", BOLD, RESET);
-    println!("  {}{}<file.py>{}                         {}Run Python via JIT 2.0 (default){}", BOLD, GREEN, RESET, DIM, RESET);
-    println!("  {}{}py{} <file.py> [-o output]          {}Compile Python → native .exe{}", BOLD, GREEN, RESET, DIM, RESET);
-    println!("  {}{}run{} <file.py>                     {}JIT 2.0 with stats{}", BOLD, GREEN, RESET, DIM, RESET);
-    println!("  {}{}test{}                              {}Run test suite{}", BOLD, YELLOW, RESET, DIM, RESET);
-    println!("  {}{}install{} <package>                 {}Install native package{}", BOLD, BLUE, RESET, DIM, RESET);
-    println!("  {}{}list{}                              {}List installed packages{}", BOLD, BLUE, RESET, DIM, RESET);
-    println!("  {}{}build{}                             {}Build pyb.toml project{}", BOLD, MAGENTA, RESET, DIM, RESET);
-    println!("  {}{}create{} <name>                     {}Create new project{}", BOLD, MAGENTA, RESET, DIM, RESET);
-    println!("  {}--version{}                         {}Show version{}", DIM, RESET, DIM, RESET);
+    println!("{}{}  ╔═══════════════════════════════════════════════════════════════════════╗{}", BOLD, YELLOW, RESET);
+    println!("{}{}  ║  {}v4.3{} — Python Native Compiler — {}Sin CPython, Sin GIL, Sin Runtime{}  ║{}", BOLD, YELLOW, BOLD, RESET, DIM, RESET, RESET);
+    println!("{}{}  ║  {}100% Nativo{} — {}x86-64 + AVX2{} — {}UB NO EXISTE{} — {}Tipos Estrictos{}       ║{}", BOLD, YELLOW, GREEN, RESET, CYAN, RESET, RED, RESET, MAGENTA, RESET, RESET);
+    println!("{}{}  ╚═══════════════════════════════════════════════════════════════════════╝{}", BOLD, YELLOW, RESET);
+    println!();
+}
+
+fn print_usage(_program: &str) {
+    print_banner();
+    
+    println!("{}{}COMANDOS:{}", BOLD, WHITE, RESET);
+    println!();
+    println!("  {}{}Compilación:{}", BOLD, GREEN, RESET);
+    println!("    {}<file.py>{}                    {}Ejecutar Python via JIT 2.0 (default){}", GREEN, RESET, DIM, RESET);
+    println!("    {}py{} <file.py> [-o output]     {}Compilar Python → ejecutable nativo .exe{}", GREEN, RESET, DIM, RESET);
+    println!("    {}run{} <file.py>                {}JIT 2.0 con estadísticas detalladas{}", GREEN, RESET, DIM, RESET);
+    println!("    {}step{} <file.py>               {}Compilación paso a paso (13 fases){}", GREEN, RESET, DIM, RESET);
+    println!();
+    println!("  {}{}Proyectos:{}", BOLD, MAGENTA, RESET);
+    println!("    {}create{} <nombre>              {}Crear nuevo proyecto PyDead-BIB{}", MAGENTA, RESET, DIM, RESET);
+    println!("    {}build{}                        {}Compilar proyecto pyb.toml{}", MAGENTA, RESET, DIM, RESET);
+    println!();
+    println!("  {}{}Paquetes:{}", BOLD, BLUE, RESET);
+    println!("    {}install{} <paquete>            {}Instalar paquete nativo{}", BLUE, RESET, DIM, RESET);
+    println!("    {}list{}                         {}Listar paquetes instalados{}", BLUE, RESET, DIM, RESET);
+    println!();
+    println!("  {}{}Testing:{}", BOLD, YELLOW, RESET);
+    println!("    {}test{}                         {}Ejecutar suite de tests{}", YELLOW, RESET, DIM, RESET);
+    println!();
+    println!("  {}{}Info:{}", BOLD, CYAN, RESET);
+    println!("    {}--version{}                    {}Mostrar versión{}", CYAN, RESET, DIM, RESET);
+    println!("    {}--help{}                       {}Mostrar esta ayuda{}", CYAN, RESET, DIM, RESET);
+    println!();
+    println!("{}{}CARACTERÍSTICAS:{}", BOLD, WHITE, RESET);
+    println!("  {}•{} {}Tipos Estrictos:{} INT + INT, Float + Float (como Fortran)", GREEN, RESET, BOLD, RESET);
+    println!("  {}•{} {}UB NO EXISTE:{} División por cero, None deref → ERROR de compilación", RED, RESET, BOLD, RESET);
+    println!("  {}•{} {}JIT 2.0:{} Inlining, CSE, Strength Reduction, Loop Unrolling", CYAN, RESET, BOLD, RESET);
+    println!("  {}•{} {}C ABI:{} ctypes.Structure, POINTER, DLL loading, struct.pack", MAGENTA, RESET, BOLD, RESET);
     println!();
     println!("  {}Eddi Andreé Salazar Matos — Lima, Perú 🇵🇪{}", DIM, RESET);
+    println!();
 }

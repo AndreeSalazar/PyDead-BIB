@@ -1,18 +1,37 @@
 # PyDead-BIB 💀🦈
 
+```
+  ██████╗ ██╗   ██╗██████╗ ███████╗ █████╗ ██████╗       ██████╗ ██╗██████╗ 
+  ██╔══██╗╚██╗ ██╔╝██╔══██╗██╔════╝██╔══██╗██╔══██╗      ██╔══██╗██║██╔══██╗
+  ██████╔╝ ╚████╔╝ ██║  ██║█████╗  ███████║██║  ██║█████╗██████╔╝██║██████╔╝
+  ██╔═══╝   ╚██╔╝  ██║  ██║██╔══╝  ██╔══██║██║  ██║╚════╝██╔══██╗██║██╔══██╗
+  ██║        ██║   ██████╔╝███████╗██║  ██║██████╔╝      ██████╔╝██║██████╔╝
+  ╚═╝        ╚═╝   ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═════╝       ╚═════╝ ╚═╝╚═════╝ 
+```
+
 > **Python → x86-64 Nativo — Sin CPython — Sin GIL — Sin Runtime**
 
 [![Rust](https://img.shields.io/badge/Rust-1.75+-orange.svg)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/License-Techne%20v1.0-purple.svg)](TECHNE_LICENSE_v1.0.license)
-[![Version](https://img.shields.io/badge/Version-4.0.0-green.svg)](https://github.com/AndreeSalazar/PyDead-BIB)
-[![Tests](https://img.shields.io/badge/Tests-83%2F83%20PASS-brightgreen.svg)](https://github.com/AndreeSalazar/PyDead-BIB)
+[![Version](https://img.shields.io/badge/Version-4.3.0-green.svg)](https://github.com/AndreeSalazar/PyDead-BIB)
+[![Tests](https://img.shields.io/badge/Tests-135%20PASS-brightgreen.svg)](https://github.com/AndreeSalazar/PyDead-BIB)
 [![JIT](https://img.shields.io/badge/JIT%20KILLER-v2.0-ff00ff.svg)](https://github.com/AndreeSalazar/PyDead-BIB)
+[![UB](https://img.shields.io/badge/UB-NO%20EXISTE-red.svg)](https://github.com/AndreeSalazar/PyDead-BIB)
+[![Types](https://img.shields.io/badge/Tipos-ESTRICTOS-blue.svg)](https://github.com/AndreeSalazar/PyDead-BIB)
+
+```
+╔═══════════════════════════════════════════════════════════════════════════╗
+║  v4.3 — Python Native Compiler — Sin CPython, Sin GIL, Sin Runtime        ║
+║  100% Nativo — x86-64 + AVX2 — UB NO EXISTE — Tipos Estrictos             ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+```
 
 ```text
 Guido van Rossum: 'readability counts'
 Dennis Ritchie:   'small is beautiful'
 Grace Hopper:     'la máquina sirve al humano'
 PyDead-BIB 2026:  hereda ADead-BIB v8.0 — Python nativo — 16→256 bits
+                  UB NO EXISTE — Tipos Estrictos como Fortran
 ```
 
 ```text

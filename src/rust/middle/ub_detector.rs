@@ -33,6 +33,10 @@ pub enum PythonUB {
     BufferOverflow,            // Escribir fuera de bounds de array/struct
     DoubleFree,                // Liberar memoria ya liberada
     NullPointerDeref,          // Dereferenciar puntero nulo en C ABI
+
+    // ── v4.3 — Tipos Estrictos (como Fortran) ────────────
+    MixedArithmetic,           // int + float → ERROR (debe ser explícito)
+    ImplicitCoercion,          // Conversión implícita de tipos → ERROR
 }
 
 /// Severity level for UB reports
@@ -146,7 +150,10 @@ impl PyUBDetector {
                     let right_is_str = matches!(right.as_ref(), IRInstruction::LoadString(_));
                     let left_is_int = matches!(left.as_ref(), IRInstruction::LoadConst(IRConstValue::Int(_)));
                     let right_is_int = matches!(right.as_ref(), IRInstruction::LoadConst(IRConstValue::Int(_)));
+                    let left_is_float = matches!(left.as_ref(), IRInstruction::LoadConst(IRConstValue::Float(_)));
+                    let right_is_float = matches!(right.as_ref(), IRInstruction::LoadConst(IRConstValue::Float(_)));
 
+                    // str + int → ERROR
                     if (left_is_str && right_is_int) || (left_is_int && right_is_str) {
                         self.reports.push(UBReport {
                             kind: PythonUB::TypeMismatch,
@@ -159,6 +166,46 @@ impl PyUBDetector {
                             col: 0,
                             file: self.file.clone(),
                             suggestion: Some("Use str() to convert the integer or use f-strings".to_string()),
+                        });
+                    }
+
+                    // ── v4.3 Tipos Estrictos: int + float → ERROR (como Fortran) ──
+                    if (left_is_int && right_is_float) || (left_is_float && right_is_int) {
+                        self.reports.push(UBReport {
+                            kind: PythonUB::MixedArithmetic,
+                            severity: UBSeverity::Error,
+                            message: format!(
+                                "Mixed arithmetic in function '{}': int + float requires explicit conversion",
+                                func.name
+                            ),
+                            line: i,
+                            col: 0,
+                            file: self.file.clone(),
+                            suggestion: Some("Use float(x) or int(x) for explicit type conversion. PyDead-BIB respects bit-level types like Fortran.".to_string()),
+                        });
+                    }
+                }
+
+                // ── v4.3 Tipos Estrictos: Mul, Sub, Div con tipos mixtos ──
+                IRInstruction::BinOp { op, left, right, .. } 
+                    if matches!(op, IROp::Mul | IROp::Sub) => {
+                    let left_is_int = matches!(left.as_ref(), IRInstruction::LoadConst(IRConstValue::Int(_)));
+                    let right_is_int = matches!(right.as_ref(), IRInstruction::LoadConst(IRConstValue::Int(_)));
+                    let left_is_float = matches!(left.as_ref(), IRInstruction::LoadConst(IRConstValue::Float(_)));
+                    let right_is_float = matches!(right.as_ref(), IRInstruction::LoadConst(IRConstValue::Float(_)));
+
+                    if (left_is_int && right_is_float) || (left_is_float && right_is_int) {
+                        self.reports.push(UBReport {
+                            kind: PythonUB::MixedArithmetic,
+                            severity: UBSeverity::Error,
+                            message: format!(
+                                "Mixed arithmetic in function '{}': {:?} with int and float requires explicit conversion",
+                                func.name, op
+                            ),
+                            line: i,
+                            col: 0,
+                            file: self.file.clone(),
+                            suggestion: Some("Use float(x) or int(x) for explicit type conversion. INT + INT, Float + Float only.".to_string()),
                         });
                     }
                 }
