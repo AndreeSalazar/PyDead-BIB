@@ -7,8 +7,17 @@
 // 13/13 fases completas — Real Runtime Output ✓
 // ============================================================
 
-use adead_bib::frontend::python::compile_python_to_ir;
-use adead_bib::backend::isa::Target;
+use PyDead_bib::frontend::python::compile_python_to_ir;
+use PyDead_bib::backend::isa::Target;
+use PyDead_bib::frontend::python::py_preprocessor::PyPreprocessor;
+use PyDead_bib::frontend::python::py_lexer::PyLexer;
+use PyDead_bib::frontend::python::py_parser::PyParser;
+use PyDead_bib::frontend::python::py_types::PyTypeInferencer;
+use PyDead_bib::frontend::python::py_ast::PyStmt;
+use PyDead_bib::middle::ub_detector::{PyUBDetector, UBSeverity};
+use PyDead_bib::backend::optimizer;
+use PyDead_bib::backend::reg_alloc;
+use PyDead_bib::backend::isa;
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -30,6 +39,11 @@ mod colors {
     pub const BG_BLUE:    &str = "\x1b[44m";
     pub const BG_MAGENTA: &str = "\x1b[45m";
     pub const BG_CYAN:    &str = "\x1b[46m";
+    // Python iconic colors (RGB true color)
+    pub const PY_YELLOW: &str = "\x1b[38;2;255;212;59m";  // #FFD43B
+    pub const PY_BLUE:   &str = "\x1b[38;2;48;105;152m";  // #306998
+    pub const PY_YELLOW_BRIGHT: &str = "\x1b[38;2;255;222;87m";
+    pub const PY_BLUE_BRIGHT: &str = "\x1b[38;2;55;118;171m";
 }
 use colors::*;
 
@@ -75,6 +89,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // ============================================================
+        // PYD — Alias for 'run' (like cargo run)
+        // ============================================================
+        "pyd" => {
+            if args.len() < 3 {
+                eprintln!("{}{}Usage:{} pyd run <file.py>", BOLD, RED, RESET);
+                eprintln!("       pyd step <file.py>  {}← debugging mode{}", DIM, RESET);
+                std::process::exit(1);
+            }
+            let subcmd = &args[2];
+            match subcmd.as_str() {
+                "run" => {
+                    if args.len() < 4 {
+                        eprintln!("Usage: pyd run <file.py>");
+                        std::process::exit(1);
+                    }
+                    jit_execute(&args[3])?;
+                }
+                "step" => {
+                    if args.len() < 4 {
+                        eprintln!("Usage: pyd step <file.py>");
+                        std::process::exit(1);
+                    }
+                    step_compile_debug(&args[3])?;
+                }
+                _ => {
+                    // Si es un archivo .py, ejecutar directamente
+                    if subcmd.ends_with(".py") {
+                        jit_execute(subcmd)?;
+                    } else {
+                        eprintln!("❌ Unknown pyd subcommand: '{}'", subcmd);
+                        eprintln!("   pyd run <file.py>   — ejecutar con JIT 2.0");
+                        eprintln!("   pyd step <file.py>  — debugging detallado");
+                        std::process::exit(1);
+                    }
+                }
+            }
+        }
+
+        // ============================================================
         // STEP — Step-by-step compilation visualization (13 phases)
         // ============================================================
         "step" => {
@@ -82,13 +135,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 eprintln!("Usage: pyb step <file.py>");
                 std::process::exit(1);
             }
-            println!("╔══════════════════════════════════════════════════════════════╗");
-            println!("║   PyDead-BIB Step Compiler — Deep Analysis Mode 💀🦈        ║");
-            println!("╚══════════════════════════════════════════════════════════════╝");
-            compile_python_file(
-                &args[2],
-                &["pyb".to_string(), "step".to_string(), args[2].clone()],
-            )?;
+            step_compile_debug(&args[2])?;
         }
 
         // ============================================================
@@ -201,7 +248,7 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     // ── Phase 01: Preprocessor ────────────────────────────────
     let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 01:{} {}PREPROCESSOR{}", BOLD, BLUE, RESET, CYAN, RESET);
-    let mut preprocessor = adead_bib::frontend::python::py_preprocessor::PyPreprocessor::new();
+    let mut preprocessor = PyPreprocessor::new();
     let preprocessed = preprocessor.process(&source);
     let line_count = preprocessed.lines().count();
     let t01 = t0.elapsed();
@@ -211,7 +258,7 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     // ── Phase 02: Import Eliminator ───────────────────────────
     let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 02:{} {}IMPORT ELIMINATOR{}", BOLD, BLUE, RESET, CYAN, RESET);
-    let import_resolver = adead_bib::frontend::python::py_import_resolver::PyImportResolver::new();
+    let import_resolver = PyDead_bib::frontend::python::py_import_resolver::PyImportResolver::new();
     let imports = import_resolver.resolve(&preprocessed);
     for imp in &imports {
         let resolved = import_resolver.resolve_module(imp);
@@ -225,17 +272,17 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     // ── Phase 03: Lexer ───────────────────────────────────────
     let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 03:{} {}LEXER{}", BOLD, BLUE, RESET, CYAN, RESET);
-    let mut lexer = adead_bib::frontend::python::py_lexer::PyLexer::new(&preprocessed);
+    let mut lexer = PyLexer::new(&preprocessed);
     let tokens = lexer.tokenize();
-    let indent_count = tokens.iter().filter(|t| matches!(t, adead_bib::frontend::python::py_lexer::PyToken::Indent)).count();
-    let dedent_count = tokens.iter().filter(|t| matches!(t, adead_bib::frontend::python::py_lexer::PyToken::Dedent)).count();
+    let indent_count = tokens.iter().filter(|t| matches!(t, PyDead_bib::frontend::python::py_lexer::PyToken::Indent)).count();
+    let dedent_count = tokens.iter().filter(|t| matches!(t, PyDead_bib::frontend::python::py_lexer::PyToken::Dedent)).count();
     println!("  {}tokens:{}  {}{}{}", DIM, RESET, BOLD, tokens.len(), RESET);
     println!("  {}indent:{}  {}/{} pares  {}[{:.3}ms]{}", DIM, RESET, indent_count, dedent_count, DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
 
     // ── Phase 04: Parser ──────────────────────────────────────
     let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 04:{} {}PARSER{}", BOLD, BLUE, RESET, CYAN, RESET);
-    let mut parser = adead_bib::frontend::python::py_parser::PyParser::new(tokens);
+    let mut parser = PyDead_bib::frontend::python::py_parser::PyParser::new(tokens);
     let ast = match parser.parse() {
         Ok(a) => a,
         Err(e) => {
@@ -248,13 +295,13 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     println!("  {}AST:{}     {}{}{} top-level nodes  {}[{:.3}ms]{}", DIM, RESET, BOLD, ast.body.len(), RESET, DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
     for stmt in &ast.body {
         match stmt {
-            adead_bib::frontend::python::py_ast::PyStmt::FunctionDef { name, params, .. } => {
+            PyDead_bib::frontend::python::py_ast::PyStmt::FunctionDef { name, params, .. } => {
                 println!("  {}├─{} {}fn{} {}{}{}({}{}{})", DIM, RESET, MAGENTA, RESET, BOLD, name, RESET, DIM, params.len(), RESET);
             }
-            adead_bib::frontend::python::py_ast::PyStmt::ClassDef { name, .. } => {
+            PyDead_bib::frontend::python::py_ast::PyStmt::ClassDef { name, .. } => {
                 println!("  {}├─{} {}class{} {}{}{}", DIM, RESET, YELLOW, RESET, BOLD, name, RESET);
             }
-            adead_bib::frontend::python::py_ast::PyStmt::Import { names } => {
+            PyDead_bib::frontend::python::py_ast::PyStmt::Import { names } => {
                 for alias in names {
                     println!("  {}├─{} {}import{} {}", DIM, RESET, BLUE, RESET, alias.name);
                 }
@@ -266,7 +313,7 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     // ── Phase 05: Type Inferencer ─────────────────────────────
     let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 05:{} {}TYPE INFERENCER{}", BOLD, BLUE, RESET, CYAN, RESET);
-    let mut inferencer = adead_bib::frontend::python::py_types::PyTypeInferencer::new();
+    let mut inferencer = PyDead_bib::frontend::python::py_types::PyTypeInferencer::new();
     let typed_ast = inferencer.infer(&ast);
     println!("  {}{}✓{} inference complete  {}[{:.3}ms]{}", GREEN, BOLD, RESET, DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
     // v4.0 FASE 3: Show struct layouts
@@ -307,7 +354,7 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     let mut total_eliminated = 0usize;
     let mut ir = ir; // make mutable
     for func in ir.functions.iter_mut() {
-        let (f, e) = adead_bib::middle::ir::optimize_function(func);
+        let (f, e) = PyDead_bib::middle::ir::optimize_function(func);
         total_folded += f;
         total_eliminated += e;
     }
@@ -317,12 +364,12 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     // ── Phase 07: UB Detector ─────────────────────────────────
     let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 07:{} {}UB DETECTOR{}", BOLD, BLUE, RESET, CYAN, RESET);
-    let mut ub_detector = adead_bib::middle::ub_detector::PyUBDetector::new()
+    let mut ub_detector = PyDead_bib::middle::ub_detector::PyUBDetector::new()
         .with_file(input_file.to_string());
     let reports = ub_detector.analyze(&ir);
-    let ub_errors = reports.iter().filter(|r| matches!(r.severity, adead_bib::middle::ub_detector::UBSeverity::Error)).count();
-    let ub_warnings = reports.iter().filter(|r| matches!(r.severity, adead_bib::middle::ub_detector::UBSeverity::Warning)).count();
-    let ub_infos = reports.iter().filter(|r| matches!(r.severity, adead_bib::middle::ub_detector::UBSeverity::Info)).count();
+    let ub_errors = reports.iter().filter(|r| matches!(r.severity, PyDead_bib::middle::ub_detector::UBSeverity::Error)).count();
+    let ub_warnings = reports.iter().filter(|r| matches!(r.severity, PyDead_bib::middle::ub_detector::UBSeverity::Warning)).count();
+    let ub_infos = reports.iter().filter(|r| matches!(r.severity, PyDead_bib::middle::ub_detector::UBSeverity::Info)).count();
     if reports.is_empty() {
         println!("  {}{}✓ CLEAN{} — 0 errors, 0 warnings, 0 infos  {}[{:.3}ms]{}", GREEN, BOLD, RESET, DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
     } else {
@@ -333,9 +380,9 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
             DIM, ub_infos, RESET);
         for report in reports.iter() {
             let (icon, color) = match report.severity {
-                adead_bib::middle::ub_detector::UBSeverity::Error => ("✗", RED),
-                adead_bib::middle::ub_detector::UBSeverity::Warning => ("⚠", YELLOW),
-                adead_bib::middle::ub_detector::UBSeverity::Info => ("ℹ", BLUE),
+                PyDead_bib::middle::ub_detector::UBSeverity::Error => ("✗", RED),
+                PyDead_bib::middle::ub_detector::UBSeverity::Warning => ("⚠", YELLOW),
+                PyDead_bib::middle::ub_detector::UBSeverity::Info => ("ℹ", BLUE),
             };
             println!("  {}{}{}{} {:?}: {}{}", color, BOLD, icon, RESET, report.kind, report.message, RESET);
             if let Some(suggestion) = &report.suggestion {
@@ -358,7 +405,7 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     // ── Phase 08: Optimizer ───────────────────────────────────
     let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 08:{} {}OPTIMIZER{}", BOLD, BLUE, RESET, CYAN, RESET);
-    let optimized = adead_bib::backend::optimizer::optimize(&ir);
+    let optimized = PyDead_bib::backend::optimizer::optimize(&ir);
     println!("  {}folded:{}  {} constants", DIM, RESET, optimized.stats.constants_folded);
     println!("  {}dead:{}    {} removed", DIM, RESET, optimized.stats.dead_code_removed);
     println!("  {}SIMD:{}    {} vectorized  {}[{:.3}ms]{}", DIM, RESET, optimized.stats.simd_vectorized, DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
@@ -366,7 +413,7 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     // ── Phase 09: Register Allocator ──────────────────────────
     let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 09:{} {}REGISTER ALLOCATOR{}", BOLD, BLUE, RESET, CYAN, RESET);
-    let allocated = adead_bib::backend::reg_alloc::allocate(&optimized);
+    let allocated = PyDead_bib::backend::reg_alloc::allocate(&optimized);
     println!("  {}vars:{}    {} → {}{}{} regs, {} spills",
         DIM, RESET, allocated.stats.total_vars, GREEN, allocated.stats.registers_used, RESET, allocated.stats.spills);
     for func in &allocated.functions {
@@ -377,7 +424,7 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     // ── Phase 10: ISA Compiler ────────────────────────────────
     let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 10:{} {}ISA COMPILER (x86-64){}", BOLD, BLUE, RESET, CYAN, RESET);
-    let compiled = adead_bib::backend::isa::compile(&allocated, target);
+    let compiled = PyDead_bib::backend::isa::compile(&allocated, target);
     println!("  {}.text:{}   {}{}{} bytes", DIM, RESET, BOLD, compiled.stats.total_bytes, RESET);
     println!("  {}funcs:{}   {}", DIM, RESET, compiled.stats.functions_compiled);
     println!("  {}instrs:{}  {}  {}[{:.3}ms]{}", DIM, RESET, compiled.stats.instructions_emitted, DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
@@ -385,7 +432,7 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     // ── Phase 11: BG Stamp ────────────────────────────────────
     let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 11:{} {}BINARY GUARDIAN{}", BOLD, BLUE, RESET, CYAN, RESET);
-    let stamped = adead_bib::backend::bg::stamp(&compiled);
+    let stamped = PyDead_bib::backend::bg::stamp(&compiled);
     println!("  {}magic:{}   {}0x{:08X}{}", DIM, RESET, MAGENTA, stamped.stamp.magic, RESET);
     println!("  {}ver:{}     0x{:04X}", DIM, RESET, stamped.stamp.version);
     println!("  {}chksum:{}  {}0x{:08X}{}  {}[{:.3}ms]{}", DIM, RESET, YELLOW, stamped.stamp.checksum, RESET, DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
@@ -393,8 +440,8 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     // ── Phase 12: Output (PE/ELF/Po) ─────────────────────────
     let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 12:{} {}OUTPUT{}", BOLD, BLUE, RESET, CYAN, RESET);
-    let binary = adead_bib::backend::output::emit(&stamped);
-    let stats = adead_bib::backend::output::binary_stats(&binary, &stamped);
+    let binary = PyDead_bib::backend::output::emit(&stamped);
+    let stats = PyDead_bib::backend::output::binary_stats(&binary, &stamped);
     println!("  {}format:{}  {}", DIM, RESET, stats.target);
     println!("  {}.text:{}   {} bytes", DIM, RESET, stats.text_bytes);
     println!("  {}.data:{}   {} bytes", DIM, RESET, stats.data_bytes);
@@ -446,10 +493,10 @@ fn jit_execute(input_file: &str) -> Result<(), Box<dyn std::error::Error>> {
     let pipeline_start = std::time::Instant::now();
 
     // MEJORA 6: CPU Feature Detection — detect once
-    let cpu = adead_bib::backend::jit::detect_cpu_features();
+    let cpu = PyDead_bib::backend::jit::detect_cpu_features();
 
     // MEJORA 3: Thermal Cache — hash source
-    let source_hash = adead_bib::backend::jit::hash_source(&source);
+    let source_hash = PyDead_bib::backend::jit::hash_source(&source);
 
     println!();
     println!("{}{}╔════════════════════════════════════════════════════════════════╗{}", BOLD, MAGENTA, RESET);
@@ -471,25 +518,25 @@ fn jit_execute(input_file: &str) -> Result<(), Box<dyn std::error::Error>> {
 
     // Preprocess
     let t0 = std::time::Instant::now();
-    let mut preprocessor = adead_bib::frontend::python::py_preprocessor::PyPreprocessor::new();
+    let mut preprocessor = PyPreprocessor::new();
     let preprocessed = preprocessor.process(&source);
     let t_preprocess = t0.elapsed();
 
     // Lex
     let t0 = std::time::Instant::now();
-    let mut lexer = adead_bib::frontend::python::py_lexer::PyLexer::new(&preprocessed);
+    let mut lexer = PyLexer::new(&preprocessed);
     let tokens = lexer.tokenize();
     let t_lex = t0.elapsed();
 
     // Parse
     let t0 = std::time::Instant::now();
-    let mut parser = adead_bib::frontend::python::py_parser::PyParser::new(tokens);
+    let mut parser = PyDead_bib::frontend::python::py_parser::PyParser::new(tokens);
     let ast = parser.parse().map_err(|e| format!("Parse error: {}", e))?;
     let t_parse = t0.elapsed();
 
     // Type inference
     let t0 = std::time::Instant::now();
-    let mut inferencer = adead_bib::frontend::python::py_types::PyTypeInferencer::new();
+    let mut inferencer = PyDead_bib::frontend::python::py_types::PyTypeInferencer::new();
     let typed_ast = inferencer.infer(&ast);
     let t_types = t0.elapsed();
 
@@ -502,16 +549,16 @@ fn jit_execute(input_file: &str) -> Result<(), Box<dyn std::error::Error>> {
     let t0 = std::time::Instant::now();
     let mut ir = ir;
     for func in ir.functions.iter_mut() {
-        adead_bib::middle::ir::optimize_function(func);
+        PyDead_bib::middle::ir::optimize_function(func);
     }
     let t_opt = t0.elapsed();
 
     // UB detect
     let t0 = std::time::Instant::now();
-    let mut ub_detector = adead_bib::middle::ub_detector::PyUBDetector::new()
+    let mut ub_detector = PyDead_bib::middle::ub_detector::PyUBDetector::new()
         .with_file(input_file.to_string());
     let reports = ub_detector.analyze(&ir);
-    let ub_errors = reports.iter().filter(|r| matches!(r.severity, adead_bib::middle::ub_detector::UBSeverity::Error)).count();
+    let ub_errors = reports.iter().filter(|r| matches!(r.severity, PyDead_bib::middle::ub_detector::UBSeverity::Error)).count();
     if ub_errors > 0 {
         return Err(format!("{} UB error(s)", ub_errors).into());
     }
@@ -519,18 +566,18 @@ fn jit_execute(input_file: &str) -> Result<(), Box<dyn std::error::Error>> {
 
     // Optimize pass 2
     let t0 = std::time::Instant::now();
-    let optimized = adead_bib::backend::optimizer::optimize(&ir);
+    let optimized = PyDead_bib::backend::optimizer::optimize(&ir);
     let t_opt2 = t0.elapsed();
 
     // Register allocate
     let t0 = std::time::Instant::now();
-    let allocated = adead_bib::backend::reg_alloc::allocate(&optimized);
+    let allocated = PyDead_bib::backend::reg_alloc::allocate(&optimized);
     let t_regalloc = t0.elapsed();
 
     // ISA compile
     let t0 = std::time::Instant::now();
     let target = Target::from_str("windows");
-    let compiled = adead_bib::backend::isa::compile(&allocated, target);
+    let compiled = PyDead_bib::backend::isa::compile(&allocated, target);
     let t_isa = t0.elapsed();
 
     let compile_elapsed = pipeline_start.elapsed();
@@ -552,7 +599,7 @@ fn jit_execute(input_file: &str) -> Result<(), Box<dyn std::error::Error>> {
     // JIT execute — MEJORA 7: Instant Entry
     println!("  {}{}▸ JIT KILLER:{} dispatch table → instant image → VirtualAlloc → JMP", BOLD, MAGENTA, RESET);
 
-    match adead_bib::backend::jit::execute_in_memory_with_stats(
+    match PyDead_bib::backend::jit::execute_in_memory_with_stats(
         &compiled.text,
         &compiled.data,
         compiled.entry_point,
@@ -725,11 +772,11 @@ fn run_test_suite() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         // Run frontend pipeline silently
-        let mut preprocessor = adead_bib::frontend::python::py_preprocessor::PyPreprocessor::new();
+        let mut preprocessor = PyPreprocessor::new();
         let preprocessed = preprocessor.process(&source);
-        let mut lexer = adead_bib::frontend::python::py_lexer::PyLexer::new(&preprocessed);
+        let mut lexer = PyLexer::new(&preprocessed);
         let tokens = lexer.tokenize();
-        let mut parser = adead_bib::frontend::python::py_parser::PyParser::new(tokens);
+        let mut parser = PyDead_bib::frontend::python::py_parser::PyParser::new(tokens);
         let ast = match parser.parse() {
             Ok(a) => a,
             Err(e) => {
@@ -738,7 +785,7 @@ fn run_test_suite() -> Result<(), Box<dyn std::error::Error>> {
                 continue;
             }
         };
-        let mut inferencer = adead_bib::frontend::python::py_types::PyTypeInferencer::new();
+        let mut inferencer = PyDead_bib::frontend::python::py_types::PyTypeInferencer::new();
         let typed_ast = inferencer.infer(&ast);
         let ir = match compile_python_to_ir(&typed_ast) {
             Ok(i) => i,
@@ -750,11 +797,11 @@ fn run_test_suite() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         // Backend pipeline
-        let optimized = adead_bib::backend::optimizer::optimize(&ir);
-        let allocated = adead_bib::backend::reg_alloc::allocate(&optimized);
-        let compiled = adead_bib::backend::isa::compile(&allocated, Target::Windows);
-        let stamped = adead_bib::backend::bg::stamp(&compiled);
-        let binary = adead_bib::backend::output::emit(&stamped);
+        let optimized = PyDead_bib::backend::optimizer::optimize(&ir);
+        let allocated = PyDead_bib::backend::reg_alloc::allocate(&optimized);
+        let compiled = PyDead_bib::backend::isa::compile(&allocated, Target::Windows);
+        let stamped = PyDead_bib::backend::bg::stamp(&compiled);
+        let binary = PyDead_bib::backend::output::emit(&stamped);
 
         // Write output
         let out_name = Path::new(file)
@@ -960,19 +1007,266 @@ fn get_pyb_dir() -> String {
     }
 }
 
+// ============================================================
+// STEP COMPILE DEBUG — Deep Analysis Mode for Debugging
+// Shows every phase with detailed IR, AST, and codegen info
+// ============================================================
+fn step_compile_debug(input_file: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let source = fs::read_to_string(input_file)
+        .map_err(|e| format!("{}{}❌ Cannot read '{}': {}{}", BOLD, RED, input_file, e, RESET))?;
+
+    println!();
+    println!("{}{}╔══════════════════════════════════════════════════════════════════════════╗{}", BOLD, MAGENTA, RESET);
+    println!("{}{}║   🔍 PyDead-BIB STEP MODE — Deep Analysis & Debugging 💀🦈              ║{}", BOLD, MAGENTA, RESET);
+    println!("{}{}║   Cada fase muestra información detallada para encontrar bugs            ║{}", DIM, MAGENTA, RESET);
+    println!("{}{}╚══════════════════════════════════════════════════════════════════════════╝{}", BOLD, MAGENTA, RESET);
+    println!("  {}Source:{} {}{}{}", DIM, RESET, BOLD, input_file, RESET);
+    println!();
+
+    // ══════════════════════════════════════════════════════════════════════
+    // PHASE 01: SOURCE CODE
+    // ══════════════════════════════════════════════════════════════════════
+    println!("{}{}═══ PHASE 01: SOURCE CODE ═══════════════════════════════════════════════{}", BOLD, CYAN, RESET);
+    let lines: Vec<&str> = source.lines().collect();
+    for (i, line) in lines.iter().enumerate().take(30) {
+        println!("  {}{:3}│{} {}", DIM, i + 1, RESET, line);
+    }
+    if lines.len() > 30 {
+        println!("  {}... ({} more lines){}", DIM, lines.len() - 30, RESET);
+    }
+    println!();
+
+    // ══════════════════════════════════════════════════════════════════════
+    // PHASE 02: PREPROCESSOR
+    // ══════════════════════════════════════════════════════════════════════
+    println!("{}{}═══ PHASE 02: PREPROCESSOR ══════════════════════════════════════════════{}", BOLD, CYAN, RESET);
+    let mut preprocessor = PyPreprocessor::new();
+    let preprocessed = preprocessor.process(&source);
+    println!("  {}✓{} Preprocessed: {} lines", GREEN, RESET, preprocessed.lines().count());
+    println!();
+
+    // ══════════════════════════════════════════════════════════════════════
+    // PHASE 03: LEXER — Show tokens
+    // ══════════════════════════════════════════════════════════════════════
+    println!("{}{}═══ PHASE 03: LEXER (Tokens) ════════════════════════════════════════════{}", BOLD, CYAN, RESET);
+    let mut lexer = PyLexer::new(&preprocessed);
+    let tokens = lexer.tokenize();
+    println!("  {}Total tokens:{} {}", DIM, RESET, tokens.len());
+    // Show first 50 tokens for debugging
+    for (i, tok) in tokens.iter().enumerate().take(50) {
+        println!("  {}{:3}│{} {:?}", DIM, i, RESET, tok);
+    }
+    if tokens.len() > 50 {
+        println!("  {}... ({} more tokens){}", DIM, tokens.len() - 50, RESET);
+    }
+    println!();
+
+    // ══════════════════════════════════════════════════════════════════════
+    // PHASE 04: PARSER — Show AST
+    // ══════════════════════════════════════════════════════════════════════
+    println!("{}{}═══ PHASE 04: PARSER (AST) ══════════════════════════════════════════════{}", BOLD, CYAN, RESET);
+    let mut parser = PyDead_bib::frontend::python::py_parser::PyParser::new(tokens);
+    let ast = match parser.parse() {
+        Ok(a) => a,
+        Err(e) => {
+            println!("  {}{}✗ PARSE ERROR:{} {}", BOLD, RED, RESET, e);
+            return Err(e.into());
+        }
+    };
+    println!("  {}AST nodes:{} {}", DIM, RESET, ast.body.len());
+    for (i, stmt) in ast.body.iter().enumerate() {
+        print_ast_stmt(stmt, i, 1);
+    }
+    println!();
+
+    // ══════════════════════════════════════════════════════════════════════
+    // PHASE 05: TYPE INFERENCER
+    // ══════════════════════════════════════════════════════════════════════
+    println!("{}{}═══ PHASE 05: TYPE INFERENCER ══════════════════════════════════════════{}", BOLD, CYAN, RESET);
+    let mut inferencer = PyDead_bib::frontend::python::py_types::PyTypeInferencer::new();
+    let typed_ast = inferencer.infer(&ast);
+    println!("  {}✓{} Type inference complete", GREEN, RESET);
+    
+    // Show class layouts (important for debugging classes)
+    if !inferencer.class_layouts.is_empty() {
+        println!();
+        println!("  {}{}CLASS LAYOUTS:{}", BOLD, YELLOW, RESET);
+        for (cls_name, layout) in &inferencer.class_layouts {
+            println!("    {}class {}{}{} {{", YELLOW, BOLD, cls_name, RESET);
+            println!("      {}total_size:{} {} bytes", DIM, RESET, layout.total_size);
+            println!("      {}parent:{} {:?}", DIM, RESET, layout.parent);
+            for field in &layout.fields {
+                println!("      {}├─{} {}: {:?} {}(offset: {}){}", 
+                    DIM, RESET, field.name, field.field_type, DIM, field.byte_offset, RESET);
+            }
+            println!("    }}");
+        }
+    }
+    println!();
+
+    // ══════════════════════════════════════════════════════════════════════
+    // PHASE 06: IR GENERATION — Show all IR instructions
+    // ══════════════════════════════════════════════════════════════════════
+    println!("{}{}═══ PHASE 06: IR GENERATION ═════════════════════════════════════════════{}", BOLD, CYAN, RESET);
+    let ir = match compile_python_to_ir(&typed_ast) {
+        Ok(i) => i,
+        Err(e) => {
+            println!("  {}{}✗ IR ERROR:{} {}", BOLD, RED, RESET, e);
+            return Err(e.into());
+        }
+    };
+    println!("  {}Functions:{} {}", DIM, RESET, ir.functions.len());
+    println!("  {}Strings:{} {}", DIM, RESET, ir.string_data.len());
+    println!();
+    
+    // Show each function's IR
+    for func in &ir.functions {
+        println!("  {}{}fn {}{}({} params) → {:?} {{{}", BOLD, MAGENTA, func.name, RESET, func.params.len(), func.return_type, RESET);
+        for (i, instr) in func.body.iter().enumerate() {
+            println!("    {}{:3}│{} {:?}", DIM, i, RESET, instr);
+        }
+        println!("  }}");
+        println!();
+    }
+
+    // Show string data
+    if !ir.string_data.is_empty() {
+        println!("  {}{}STRING DATA:{}", BOLD, GREEN, RESET);
+        for (label, content) in &ir.string_data {
+            let preview: String = content.chars().take(40).collect();
+            println!("    {}: \"{}\"", label, preview);
+        }
+        println!();
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // PHASE 07: UB DETECTOR
+    // ══════════════════════════════════════════════════════════════════════
+    println!("{}{}═══ PHASE 07: UB DETECTOR ═══════════════════════════════════════════════{}", BOLD, CYAN, RESET);
+    let mut ub_detector = PyDead_bib::middle::ub_detector::PyUBDetector::new()
+        .with_file(input_file.to_string());
+    let reports = ub_detector.analyze(&ir);
+    if reports.is_empty() {
+        println!("  {}{}✓ CLEAN{} — No UB detected", GREEN, BOLD, RESET);
+    } else {
+        for report in reports.iter() {
+            let (icon, color) = match report.severity {
+                PyDead_bib::middle::ub_detector::UBSeverity::Error => ("✗", RED),
+                PyDead_bib::middle::ub_detector::UBSeverity::Warning => ("⚠", YELLOW),
+                PyDead_bib::middle::ub_detector::UBSeverity::Info => ("ℹ", BLUE),
+            };
+            println!("  {}{}{}{} {:?}: {}", color, BOLD, icon, RESET, report.kind, report.message);
+        }
+    }
+    println!();
+
+    // ══════════════════════════════════════════════════════════════════════
+    // PHASE 08-09: OPTIMIZER & REGISTER ALLOCATOR
+    // ══════════════════════════════════════════════════════════════════════
+    println!("{}{}═══ PHASE 08-09: OPTIMIZER & REGALLOC ═══════════════════════════════════{}", BOLD, CYAN, RESET);
+    let optimized = PyDead_bib::backend::optimizer::optimize(&ir);
+    println!("  {}Const folded:{} {}", DIM, RESET, optimized.stats.constants_folded);
+    println!("  {}Dead code:{} {}", DIM, RESET, optimized.stats.dead_code_removed);
+    
+    let allocated = PyDead_bib::backend::reg_alloc::allocate(&optimized);
+    println!("  {}Registers:{} {}", DIM, RESET, allocated.stats.registers_used);
+    println!("  {}Spills:{} {}", DIM, RESET, allocated.stats.spills);
+    
+    // Show register allocation per function
+    for func in &allocated.functions {
+        println!();
+        println!("  {}{}fn {}{} — stack: {}B", BOLD, MAGENTA, func.name, RESET, func.stack_size);
+        if !func.reg_map.is_empty() {
+            println!("    {}Register map:{}", DIM, RESET);
+            for (var, reg) in &func.reg_map {
+                println!("      {} → {:?}", var, reg);
+            }
+        }
+    }
+    println!();
+
+    // ══════════════════════════════════════════════════════════════════════
+    // PHASE 10: ISA COMPILER — Show generated code info
+    // ══════════════════════════════════════════════════════════════════════
+    println!("{}{}═══ PHASE 10: ISA COMPILER (x86-64) ═════════════════════════════════════{}", BOLD, CYAN, RESET);
+    let target = Target::from_str("windows-x64");
+    let compiled = PyDead_bib::backend::isa::compile(&allocated, target);
+    println!("  {}.text size:{} {} bytes", DIM, RESET, compiled.stats.total_bytes);
+    println!("  {}Functions:{} {}", DIM, RESET, compiled.stats.functions_compiled);
+    println!("  {}Instructions:{} {}", DIM, RESET, compiled.stats.instructions_emitted);
+    println!();
+
+    // ══════════════════════════════════════════════════════════════════════
+    // SUMMARY
+    // ══════════════════════════════════════════════════════════════════════
+    println!("{}{}═══ STEP MODE COMPLETE ══════════════════════════════════════════════════{}", BOLD, GREEN, RESET);
+    println!();
+    println!("  {}Use this information to debug compilation issues.{}", DIM, RESET);
+    println!("  {}Check IR instructions for incorrect codegen.{}", DIM, RESET);
+    println!("  {}Check class layouts for field offset issues.{}", DIM, RESET);
+    println!();
+
+    Ok(())
+}
+
+// Helper to print AST statements recursively
+fn print_ast_stmt(stmt: &PyStmt, idx: usize, depth: usize) {
+    let indent = "  ".repeat(depth);
+    match stmt {
+        PyStmt::FunctionDef { name, params, body, .. } => {
+            println!("{}{}{}│{} {}fn{} {}{}{}({})", indent, DIM, idx, RESET, MAGENTA, RESET, BOLD, name, RESET, params.len());
+            for (i, s) in body.iter().enumerate().take(5) {
+                print_ast_stmt(s, i, depth + 1);
+            }
+            if body.len() > 5 {
+                println!("{}  {}... ({} more statements){}", indent, DIM, body.len() - 5, RESET);
+            }
+        }
+        PyStmt::ClassDef { name, body, .. } => {
+            println!("{}{}{}│{} {}class{} {}{}{}", indent, DIM, idx, RESET, YELLOW, RESET, BOLD, name, RESET);
+            for (i, s) in body.iter().enumerate() {
+                print_ast_stmt(s, i, depth + 1);
+            }
+        }
+        PyStmt::Assign { targets, .. } => {
+            let target_names: Vec<String> = targets.iter().map(|t| format!("{:?}", t)).collect();
+            println!("{}{}{}│{} assign → {}", indent, DIM, idx, RESET, target_names.join(", "));
+        }
+        PyStmt::Return(expr) => {
+            println!("{}{}{}│{} {}return{} {:?}", indent, DIM, idx, RESET, CYAN, RESET, expr);
+        }
+        PyStmt::If { .. } => {
+            println!("{}{}{}│{} {}if{} ...", indent, DIM, idx, RESET, BLUE, RESET);
+        }
+        PyStmt::While { .. } => {
+            println!("{}{}{}│{} {}while{} ...", indent, DIM, idx, RESET, BLUE, RESET);
+        }
+        PyStmt::For { .. } => {
+            println!("{}{}{}│{} {}for{} ...", indent, DIM, idx, RESET, BLUE, RESET);
+        }
+        PyStmt::Expr(_) => {
+            println!("{}{}{}│{} expr", indent, DIM, idx, RESET);
+        }
+        _ => {
+            println!("{}{}{}│{} {:?}", indent, DIM, idx, RESET, stmt);
+        }
+    }
+}
+
 fn print_banner() {
     println!();
-    println!("{}{}  ██████╗ ██╗   ██╗██████╗ ███████╗ █████╗ ██████╗       ██████╗ ██╗██████╗ {}", BOLD, CYAN, RESET);
-    println!("{}{}  ██╔══██╗╚██╗ ██╔╝██╔══██╗██╔════╝██╔══██╗██╔══██╗      ██╔══██╗██║██╔══██╗{}", BOLD, CYAN, RESET);
-    println!("{}{}  ██████╔╝ ╚████╔╝ ██║  ██║█████╗  ███████║██║  ██║█████╗██████╔╝██║██████╔╝{}", BOLD, MAGENTA, RESET);
-    println!("{}{}  ██╔═══╝   ╚██╔╝  ██║  ██║██╔══╝  ██╔══██║██║  ██║╚════╝██╔══██╗██║██╔══██╗{}", BOLD, MAGENTA, RESET);
-    println!("{}{}  ██║        ██║   ██████╔╝███████╗██║  ██║██████╔╝      ██████╔╝██║██████╔╝{}", BOLD, CYAN, RESET);
-    println!("{}{}  ╚═╝        ╚═╝   ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═════╝       ╚═════╝ ╚═╝╚═════╝ {}", BOLD, CYAN, RESET);
+    // Python iconic colors: Yellow #FFD43B and Blue #306998
+    println!("{}{}  ██████╗ ██╗   ██╗██████╗ ███████╗ █████╗ ██████╗       ██████╗ ██╗██████╗ {}", BOLD, PY_YELLOW, RESET);
+    println!("{}{}  ██╔══██╗╚██╗ ██╔╝██╔══██╗██╔════╝██╔══██╗██╔══██╗      ██╔══██╗██║██╔══██╗{}", BOLD, PY_YELLOW, RESET);
+    println!("{}{}  ██████╔╝ ╚████╔╝ ██║  ██║█████╗  ███████║██║  ██║█████╗██████╔╝██║██████╔╝{}", BOLD, PY_BLUE_BRIGHT, RESET);
+    println!("{}{}  ██╔═══╝   ╚██╔╝  ██║  ██║██╔══╝  ██╔══██║██║  ██║╚════╝██╔══██╗██║██╔══██╗{}", BOLD, PY_BLUE_BRIGHT, RESET);
+    println!("{}{}  ██║        ██║   ██████╔╝███████╗██║  ██║██████╔╝      ██████╔╝██║██████╔╝{}", BOLD, PY_YELLOW, RESET);
+    println!("{}{}  ╚═╝        ╚═╝   ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═════╝       ╚═════╝ ╚═╝╚═════╝ {}", BOLD, PY_YELLOW, RESET);
     println!();
-    println!("{}{}  ╔═══════════════════════════════════════════════════════════════════════╗{}", BOLD, YELLOW, RESET);
-    println!("{}{}  ║  {}v4.3{} — Python Native Compiler — {}Sin CPython, Sin GIL, Sin Runtime{}  ║{}", BOLD, YELLOW, BOLD, RESET, DIM, RESET, RESET);
-    println!("{}{}  ║  {}100% Nativo{} — {}x86-64 + AVX2{} — {}UB NO EXISTE{} — {}Tipos Estrictos{}       ║{}", BOLD, YELLOW, GREEN, RESET, CYAN, RESET, RED, RESET, MAGENTA, RESET, RESET);
-    println!("{}{}  ╚═══════════════════════════════════════════════════════════════════════╝{}", BOLD, YELLOW, RESET);
+    println!("{}{}  ╔═══════════════════════════════════════════════════════════════════════╗{}", BOLD, PY_BLUE_BRIGHT, RESET);
+    println!("{}{}  ║  {}v5.0{} — Python Native Compiler — {}Sin CPython, Sin GIL, Sin Runtime{}  ║{}", BOLD, PY_BLUE_BRIGHT, PY_YELLOW, RESET, DIM, RESET, RESET);
+    println!("{}{}  ║  {}100% Nativo{} — {}x86-64 + AVX2{} — {}UB NO EXISTE{} — {}Tipos Estrictos{}       ║{}", BOLD, PY_BLUE_BRIGHT, GREEN, RESET, PY_YELLOW, RESET, RED, RESET, PY_YELLOW, RESET, RESET);
+    println!("{}{}  ╚═══════════════════════════════════════════════════════════════════════╝{}", BOLD, PY_BLUE_BRIGHT, RESET);
     println!();
 }
 

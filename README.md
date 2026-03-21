@@ -69,17 +69,18 @@ Tu Código Python (.py)
 ## Tabla de Contenidos
 
 1. [¿Qué es PyDead-BIB?](#qué-es-pydead-bib)
-2. [Comparación](#comparación)
-3. [Instalación](#instalación)
-4. [Uso Rápido](#uso-rápido)
-5. [Step Compiler](#step-compiler)
-6. [Sintaxis Python Soportada](#sintaxis-python-soportada)
-7. [C ABI / FFI Nativo](#c-abi--ffi-nativo)
-8. [UB Detection](#ub-detection--errores-en-compile-time)
-9. [Arquitectura](#arquitectura)
-10. [JIT KILLER v2.0](#jit-killer-v20-)
-11. [Roadmap](#roadmap)
-12. [Licencia](#licencia)
+2. [Instalación](#instalación)
+3. [CLI `pyd`](#cli-pyd)
+4. [Guías](#guías)
+5. [Respeto de Bits](#respeto-de-bits-)
+6. [Comparación](#comparación)
+7. [Sintaxis Python Soportada](#sintaxis-python-soportada)
+8. [C ABI / FFI Nativo](#c-abi--ffi-nativo)
+9. [UB Detection](#ub-detection--errores-en-compile-time)
+10. [Arquitectura](#arquitectura)
+11. [JIT KILLER v2.0](#jit-killer-v20-)
+12. [Roadmap](#roadmap)
+13. [Licencia](#licencia)
 
 ---
 
@@ -91,7 +92,101 @@ Tu Código Python (.py)
 - **Zero GIL** — ownership estático elimina el Global Interpreter Lock
 - **Zero Dependencies** — sin GCC, sin LLVM, sin linker externo
 - **256-bit SIMD** — AVX2 automático para listas de floats
-- **UB Detection** — 13+ tipos de errores detectados en compile-time
+- **UB Detection** — 15+ tipos de errores detectados en compile-time
+- **Respeto de Bits** — tipos estrictos como FORTRAN, sin conversión implícita
+
+---
+
+## Respeto de Bits 💀
+
+```text
+╔═════════════════════════════════════════════════════════════════════════════╗
+║  FORTRAN 1957: tipos estrictos     ✅                                       ║
+║  Ada 1983:     más estricto        ✅                                       ║
+║  PyDead-BIB:   el más estricto     💀                                       ║
+║                                                                             ║
+║  "los bits merecen respeto"                                                 ║
+║  "cada tipo su representación única"                                        ║
+║  "INT + INT = respeto"                                                      ║
+║  "INT + FLOAT = falta de respeto"  💀                                       ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+```
+
+### Filosofía: Cada tipo respeta sus bits — sin excepciones
+
+PyDead-BIB implementa **Type Strictness ULTRA** al nivel FORTRAN donde cada tipo SOLO opera con su mismo tipo. Sin conversión implícita NUNCA. El desarrollador debe ser EXPLÍCITO si quiere combinar tipos.
+
+### Operaciones Permitidas ✅
+
+```python
+# Mismo tipo con mismo tipo = PERMITIDO
+x = 5 + 3           # int + int = int ✅
+y = 1.5 + 2.5       # float + float = float ✅
+s = "Hola" + " Mundo"  # str + str = str ✅
+r = "ab" * 3        # str * int = str ✅ (repetición)
+b = True + True     # bool + bool = int ✅ (2)
+n = True + 1        # bool + int = int ✅ (bool es subtype de int)
+```
+
+### Operaciones BLOQUEADAS 💀
+
+```python
+# Tipos diferentes = ERROR DE COMPILACIÓN
+x = 5 + 3.14        # 💀 int + float = ERROR
+y = 3.14 + 5        # 💀 float + int = ERROR
+s = "hola" + 42     # 💀 str + int = ERROR
+n = 42 + "hola"     # 💀 int + str = ERROR
+b = True + 1.0      # 💀 bool + float = ERROR
+l = [1, 2.0, 3]     # 💀 lista heterogénea = ERROR
+
+# Comparaciones entre tipos diferentes = ERROR
+if 5 == 5.0:        # 💀 int == float = ERROR
+    pass
+```
+
+### Conversión Explícita — La Única Manera
+
+```python
+# Si quieres combinar tipos, debes ser EXPLÍCITO:
+
+# int → float
+x = 5
+y = 3.14
+z = float(x) + y    # ✅ explícito permitido
+
+# float → int (con pérdida)
+x = 3.14
+y = int(x) + 5      # ✅ explícito permitido
+
+# int → str
+x = 42
+s = str(x) + " items"  # ✅ explícito permitido
+
+# NUNCA implícito:
+x = 5 + 3.14        # 💀 BLOQUEADO siempre
+```
+
+### Mensajes de Error
+
+```text
+╔══════════════════════════════════════════════════════════════╗
+║  PyDead-BIB: COMPILACIÓN BLOQUEADA — TypeMismatch            ║
+╚══════════════════════════════════════════════════════════════╝
+
+Error: int + float
+  Archivo: ejemplo.py:3
+  
+  lado izquierdo: int (valor: 5)
+  lado derecho:   float (valor: 3.14)
+  
+  Solución — usa conversión explícita:
+    float(5) + 3.14   ← opción 1
+    5 + int(3.14)     ← opción 2
+
+"respeta los bits como FORTRAN"
+"cada tipo su función única"
+"conversión explícita o no compila"
+```
 
 ---
 
@@ -148,58 +243,73 @@ cargo build --release
 # Linux:   target/release/pyb
 ```
 
-### Agregar al PATH
+### Agregar al PATH (Permanente)
+
+**Windows (PowerShell como Admin):**
 
 ```powershell
-# Windows PowerShell
-$env:PATH += ";$PWD\target\release"
+mkdir $env:USERPROFILE\.pyd -Force
+Copy-Item target\release\pyd.exe $env:USERPROFILE\.pyd\pyd.exe
+[Environment]::SetEnvironmentVariable("Path", $env:Path + ";$env:USERPROFILE\.pyd", "User")
+```
 
-# Linux/macOS
-export PATH="$PATH:$PWD/target/release"
+**Linux/macOS:**
+
+```bash
+mkdir -p ~/.local/bin
+cp target/release/pyd ~/.local/bin/
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
 ```
 
 ---
 
-## Uso Rápido
+## CLI `pyd`
+
+El comando `pyd` es la interfaz principal de PyDead-BIB:
 
 ```bash
-# Compilación básica
-pyb py archivo.py -o output.exe
-
-# Target específico
-pyb py archivo.py --target windows    # PE x64
-pyb py archivo.py --target linux      # ELF x64
-pyb py archivo.py --target fastos256  # FastOS 256-bit
-
-# Compilar y ejecutar (JIT KILLER)
-pyb run archivo.py
+pyd run archivo.py      # Ejecutar con JIT 2.0 (recomendado)
+pyd step archivo.py     # Debugging paso a paso
+pyd py archivo.py       # Compilar a .exe/.elf
+pyd archivo.py          # Alias de run
+pyd test                # Ejecutar suite de tests
 ```
 
-### Crear Proyecto
+### Ejemplos
 
 ```bash
-pyb create mi_app
-cd mi_app
-pyb run src/main.py
+# Ejecutar Python con JIT 2.0
+pyd run tests/jit_runner/test_jit_classes.py
+
+# Ver todas las fases del compilador
+pyd step tests/jit_runner/test_jit_strings.py
+
+# Compilar a ejecutable nativo
+pyd py hello.py -o hello.exe
+./hello.exe
 ```
 
-Estructura generada:
+---
 
-```text
-mi_app/
-├── pyb.toml        # Configuración del proyecto
-└── src/
-    └── main.py     # Código fuente
-```
+## Guías
+
+Para documentación completa, ver **[GUIAS.md](GUIAS.md)**:
+
+- 📦 Instalación detallada (Windows/Linux/macOS)
+- 🚀 Comandos principales con ejemplos
+- 📝 Código Python soportado
+- ⚡ Tiempos de referencia
+- 🎯 Type Strictness ULTRA
 
 ---
 
 ## Step Compiler
 
-Ver las 13 fases de compilación en tiempo real:
+Ver las 10 fases de compilación en tiempo real:
 
 ```bash
-pyb step archivo.py
+pyd step archivo.py
 ```
 
 ```text

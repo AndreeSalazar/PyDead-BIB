@@ -129,6 +129,18 @@ impl PyToIR {
 
         // Second pass: generate __main__ for top-level expressions
         if !toplevel_stmts.is_empty() {
+            // Pre-scan: register all top-level assignments as globals
+            // This ensures variables like `p = Point(...)` use GlobalStore/GlobalLoad
+            for stmt in &toplevel_stmts {
+                if let PyStmt::Assign { targets, .. } = stmt {
+                    for target in targets {
+                        if let PyExpr::Name(name) = target {
+                            self.all_globals.insert(name.clone());
+                        }
+                    }
+                }
+            }
+            
             let mut main_func = IRFunction::new("__main__".to_string(), vec![], IRType::Void);
             for stmt in &toplevel_stmts {
                 self.convert_body_stmt(stmt, &mut main_func, &mut program)?;
@@ -452,6 +464,14 @@ impl PyToIR {
                         if let PyExpr::StringLiteral(s) = value {
                             let label = self.add_string(s, program);
                             self.string_vars.insert(name.clone(), label);
+                        }
+                        // v4.3: Track string concatenation results as heap strings
+                        if let PyExpr::BinOp { op: PyBinOp::Add, left, right } = value {
+                            let left_is_str = self.is_str_expr(left);
+                            let right_is_str = self.is_str_expr(right);
+                            if left_is_str || right_is_str {
+                                self.str_heap_vars.insert(name.clone());
+                            }
                         }
                         if self.global_vars.contains(name) || self.all_globals.contains(name) {
                             // Global variable → use GlobalStore (no VarDecl needed)
@@ -801,6 +821,34 @@ impl PyToIR {
                                                     }
                                                 }
                                             }
+                                        }
+                                    }
+                                    // v4.3: Check if arg is a Name that refers to a string variable
+                                    PyExpr::Name(var_name) => {
+                                        // First check if it's a known string literal variable
+                                        if let Some(label) = self.string_vars.get(var_name).cloned() {
+                                            func.body.push(IRInstruction::PrintStr(label));
+                                        } else if self.str_heap_vars.contains(var_name) {
+                                            // Heap string variable
+                                            let instr = self.convert_expr_to_instr(arg, program);
+                                            func.body.push(instr);
+                                            func.body.push(IRInstruction::Call {
+                                                func: "__pyb_str_print".to_string(),
+                                                args: vec![],
+                                            });
+                                        } else if self.list_vars.contains(var_name) {
+                                            // List variable
+                                            let instr = self.convert_expr_to_instr(arg, program);
+                                            func.body.push(instr);
+                                            func.body.push(IRInstruction::Call {
+                                                func: "__pyb_list_print".to_string(),
+                                                args: vec![],
+                                            });
+                                        } else {
+                                            // Assume integer variable
+                                            let instr = self.convert_expr_to_instr(arg, program);
+                                            func.body.push(instr);
+                                            func.body.push(IRInstruction::PrintInt);
                                         }
                                     }
                                     _ => {
@@ -1911,7 +1959,13 @@ impl PyToIR {
                                 if let Some(cls) = self.class_vars.get(obj_name) {
                                     let cls = cls.clone();
                                     let full_method = format!("{}__{}", cls, method);
-                                    let mut call_args = vec![IRInstruction::Load(obj_name.to_string())];
+                                    // Use GlobalLoad if obj_name is a global variable
+                                    let obj_instr = if self.all_globals.contains(obj_name) {
+                                        IRInstruction::GlobalLoad(obj_name.to_string())
+                                    } else {
+                                        IRInstruction::Load(obj_name.to_string())
+                                    };
+                                    let mut call_args = vec![obj_instr];
                                     for a in args {
                                         call_args.push(self.convert_expr_to_instr(a, program));
                                     }

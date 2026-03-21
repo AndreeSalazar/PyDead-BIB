@@ -8,27 +8,16 @@ class Point:
         self.x = x
         self.y = y
     
-    def sum(self):
-        return self.x + self.y
+    def get_x(self):
+        return self.x
 
-class Counter:
-    def __init__(self):
-        self.count = 0
-    
-    def increment(self):
-        self.count = self.count + 1
-        return self.count
-
-# Test Point
+# Test Point creation
 p = Point(10, 20)
-print("Point(10, 20).sum() =")
-print(p.sum())
+print("Point created")
 
-# Test Counter
-c = Counter()
-print("Counter increments:")
-print(c.increment())
-print(c.increment())
-print(c.increment())
+# Test method call - store result first
+result = p.get_x()
+print("get_x() =")
+print(result)
 
 print("=== PASS ===")

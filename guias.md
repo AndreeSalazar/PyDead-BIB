@@ -1,105 +1,161 @@
 # 📖 Guías de PyDead-BIB 💀🦈
+
 > Python → x86-64 Nativo — Sin CPython — Sin GIL — Sin runtime
+> **CLI:** `pyd` (PyDead-BIB Compiler v5.0)
 
 ---
 
-## 🚀 Modos de Ejecución
+## � Instalación
 
-### 1. JIT 2.0 — Default (recomendado)
+### Windows (PowerShell como Admin)
+
 ```powershell
-cargo run -- <archivo.py>
-# o si tienes el binario instalado:
-pyb <archivo.py>
+# 1. Compilar el proyecto
+cargo build --release
+
+# 2. Crear directorio y copiar ejecutable
+mkdir $env:USERPROFILE\.pyd -Force
+Copy-Item target\release\pyd.exe $env:USERPROFILE\.pyd\pyd.exe
+
+# 3. Agregar al PATH (permanente)
+[Environment]::SetEnvironmentVariable("Path", $env:Path + ";$env:USERPROFILE\.pyd", "User")
+
+# 4. Reiniciar terminal y verificar
+pyd --version
 ```
-**Qué hace:** Compila y ejecuta **en memoria** (RAM). No escribe ningún `.exe` al disco.  
-**Velocidad:** ~5ms arranque. Sin filesystem. Puro RAM.
+
+### Linux/macOS
+
+```bash
+# 1. Compilar
+cargo build --release
+
+# 2. Instalar
+mkdir -p ~/.local/bin
+cp target/release/pyd ~/.local/bin/
+
+# 3. Agregar al PATH (en ~/.bashrc o ~/.zshrc)
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# 4. Verificar
+pyd --version
+```
+
+---
+
+## 🚀 Comandos Principales
+
+### 1. Ejecutar Python — `pyd run` (recomendado)
+
+```bash
+pyd run archivo.py
+```
+
+**Qué hace:** Compila y ejecuta en memoria (JIT 2.0). No escribe `.exe` al disco.
 
 **Ejemplo:**
-```powershell
-cargo run -- tests/test_str_v45.py
+
+```bash
+pyd run tests/jit_runner/test_jit_strings.py
 ```
-Output esperado:
+
+**Output:**
+
 ```
-  HELLO, WORLD!
-  hello, world!
-  18
-  True
-  True
-  Hello, World!
-  7
-  Hello, Peru!
-  42
+╔════════════════════════════════════════════════════════════════╗
+║   PyDead-BIB JIT KILLER v2.0 💀🦈                             ║
+╚════════════════════════════════════════════════════════════════╝
+  ⚡ compile: 1.125ms
+  ⚡ time-to-RAM: 1.464ms
+  ✓ JIT complete (exit: 0)
 ```
 
 ---
 
-### 2. JIT 2.0 con Stats — `pyb run`
-```powershell
-cargo run -- run <archivo.py>
+### 2. Debugging — `pyd step`
+
+```bash
+pyd step archivo.py
 ```
-**Qué hace:** igual que el default, pero muestra estadísticas del JIT:  
-tiempo de alloc, tiempo de patch, tiempo de ejecución, cache HIT/COLD, tamaño en RAM.
+
+**Qué hace:** Muestra cada fase del compilador con información detallada para debugging.
+
+**Fases mostradas:**
+
+| Fase | Descripción |
+|------|-------------|
+| 01 | SOURCE CODE — código fuente con números de línea |
+| 02 | PREPROCESSOR — preprocesamiento |
+| 03 | LEXER — todos los tokens generados |
+| 04 | PARSER — AST completo |
+| 05 | TYPE INFERENCER — tipos + class layouts |
+| 06 | IR GENERATION — instrucciones IR de cada función |
+| 07 | UB DETECTOR — errores de undefined behavior |
+| 08-09 | OPTIMIZER + REGALLOC — registros asignados |
+| 10 | ISA COMPILER — bytes generados |
 
 **Ejemplo:**
-```powershell
-cargo run -- run tests/test_list_v45.py
+
+```bash
+pyd step tests/jit_runner/test_jit_classes.py
 ```
 
 ---
 
-### 3. Compilar a `.exe` nativo — `pyb py`
-```powershell
-cargo run -- py <archivo.py>
-cargo run -- py <archivo.py> -o output.exe
+### 3. Compilar a Ejecutable — `pyd py`
+
+```bash
+pyd py archivo.py              # genera archivo.exe
+pyd py archivo.py -o salida.exe  # nombre personalizado
 ```
-**Qué hace:** Genera un `.exe` standalone nativo para Windows x86-64.
+
+**Qué hace:** Genera ejecutable nativo standalone (.exe Windows, ELF Linux).
 
 **Ejemplo:**
-```powershell
-cargo run -- py tests/test_hello.py
-# genera: test_hello.exe (6.5KB)
-.\test_hello.exe
+
+```bash
+pyd py hello.py -o hello.exe
+./hello.exe
 ```
 
 ---
 
-### 4. Step — Análisis de fases
-```powershell
-cargo run -- step <archivo.py>
-```
-**Qué hace:** Muestra las 13 fases de compilación en detalle (lexer, parser, IR, ISA, etc.)
+### 4. Ejecutar Directo
 
-**Ejemplo:**
-```powershell
-cargo run -- step tests/test_str_v45.py
+```bash
+pyd archivo.py
 ```
-Output esperado:
-```
-▸ Phase 01: PREPROCESSOR   [0.184ms]
-▸ Phase 02: IMPORT ELIMINATOR
-▸ Phase 03: LEXER  tokens: 51
-▸ Phase 04: PARSER  AST: 6 top-level nodes
-...
-▸ Phase 10: ISA COMPILER  .text: 4422 bytes
-...
-✅ Compilation complete — 13/13 phases
-```
+
+**Qué hace:** Alias de `pyd run`. Ejecuta directamente con JIT 2.0.
 
 ---
 
-### 5. Suite de tests — `pyb test`
-```powershell
-cargo run -- test
+### 5. Tests
+
+```bash
+pyd test
 ```
-Output esperado:
-```
-✅ TOTAL: 89/89 PASS
-Binary Is Binary 💀🦈🇵🇪
-```
+
+**Qué hace:** Ejecuta la suite completa de tests.
 
 ---
 
-## 📝 Ejemplos de Código Soportado (v4.5)
+## 📋 Referencia Rápida
+
+| Comando | Descripción |
+|---------|-------------|
+| `pyd run <file.py>` | Ejecutar con JIT 2.0 + stats |
+| `pyd step <file.py>` | Debugging paso a paso |
+| `pyd py <file.py>` | Compilar a .exe/.elf |
+| `pyd <file.py>` | Ejecutar directo (alias de run) |
+| `pyd test` | Ejecutar suite de tests |
+| `pyd --version` | Ver versión |
+| `pyd --help` | Mostrar ayuda |
+
+---
+
+## 📝 Ejemplos de Código Soportado (v5.0)
 
 ### Strings
 ```python
@@ -193,27 +249,46 @@ print(sys.platform)      # win32
 
 ---
 
-## 🔧 Comandos Rápidos
-
-| Comando | Acción |
-|---------|--------|
-| `cargo run -- <file.py>` | JIT 2.0 (default) |
-| `cargo run -- run <file.py>` | JIT 2.0 + stats |
-| `cargo run -- py <file.py>` | Compilar a .exe |
-| `cargo run -- step <file.py>` | Ver 13 fases |
-| `cargo run -- test` | Suite 89 tests |
-| `cargo run -- version` | Ver versión |
-
----
-
-## ⚡ Tiempos de referencia (i7 Intel, Windows)
+## ⚡ Tiempos de Referencia
 
 | Fase | Tiempo |
 |------|--------|
-| Lexer + Parser | ~0.4ms |
-| IR Gen | ~0.4ms |
-| ISA Compile | ~0.9ms |
-| JIT alloc+exec | ~1.0ms |
-| **Total** | **~5ms** |
+| Preprocess + Lex | ~0.03ms |
+| Parse | ~0.05ms |
+| Type Inference | ~0.05ms |
+| IR Gen | ~0.07ms |
+| Optimize + RegAlloc | ~0.02ms |
+| ISA Compile | ~0.16ms |
+| JIT alloc+exec | ~0.25ms |
+| **Total** | **~1.0ms** |
 
-> 💀 Sin CPython — Sin GIL — Sin runtime — Binary Is Binary 🦈
+---
+
+## 🎯 Type Strictness ULTRA
+
+PyDead-BIB usa tipado estricto al estilo FORTRAN:
+
+```python
+# ✅ Permitido
+x = 5 + 3           # int + int
+y = 3.14 + 2.71     # float + float
+s = "Hola" + "!"    # str + str
+
+# 💀 BLOQUEADO (error de compilación)
+z = 5 + 3.14        # int + float → ERROR
+w = "Hola" + 42     # str + int → ERROR
+
+# ✅ Conversión explícita
+z = float(5) + 3.14  # OK
+w = "Hola" + str(42) # OK
+```
+
+---
+
+Aquí está el comando para ejecutar el test de strings:
+```bash
+#.\target\release\pyd.exe run tests\jit_runner\test_jit_strings.py
+```
+
+
+> 💀 Sin CPython — Sin GIL — Sin runtime — Binary Is Binary 🦈🇵🇪

@@ -1,8 +1,9 @@
 # PyDead-BIB — Reporte de Estado y Puntos Faltantes
 
 > **Objetivo:** Python + C ABI nativo — JIT KILLER v2.0 completo
-> **Fecha:** 2026-03-20
-> **Versión actual:** v4.0
+> **Fecha:** 2026-03-21
+> **Versión actual:** v5.0
+> **CLI:** `pyd` (PyDead-BIB Compiler)
 
 ---
 
@@ -299,6 +300,61 @@ enc.ret();
 | Stdlib modules | 8 | 15 |
 | UB Detection types | 15 | 15 ✅ |
 | JIT 2.0 optimizations | 6 | 6 ✅ |
+| Type Strictness rules | 20+ | 20+ ✅ |
+
+---
+
+## 9. Respeto de Bits — Type Strictness ULTRA
+
+### Filosofía
+
+```text
+FORTRAN 1957: tipos estrictos     ✅
+Ada 1983:     más estricto        ✅
+PyDead-BIB:   el más estricto     💀
+
+"los bits merecen respeto"
+"cada tipo su representación única"
+"INT + INT = respeto"
+"INT + FLOAT = falta de respeto" 💀
+```
+
+### Reglas Implementadas
+
+| Operación | Resultado | Estado |
+|---|---|---|
+| `int + int` | `int` | ✅ Permitido |
+| `float + float` | `float` | ✅ Permitido |
+| `str + str` | `str` | ✅ Permitido |
+| `str * int` | `str` | ✅ Permitido |
+| `bool + bool` | `int` | ✅ Permitido |
+| `bool + int` | `int` | ✅ Permitido |
+| `int + float` | ERROR | 💀 Bloqueado |
+| `float + int` | ERROR | 💀 Bloqueado |
+| `str + int` | ERROR | 💀 Bloqueado |
+| `bool + float` | ERROR | 💀 Bloqueado |
+| `[1, 2.0, 3]` | ERROR | 💀 Lista heterogénea |
+| `int == float` | ERROR | 💀 Comparación bloqueada |
+
+### Archivos Modificados
+
+| Archivo | Cambios |
+|---|---|
+| `src/rust/frontend/python/py_types.rs` | +350 líneas: `types_compatible()`, `types_comparable()`, `check_list_homogeneity()` |
+| `src/rust/middle/ub_detector.rs` | +50 líneas: `MixedArithmetic`, `ImplicitCoercion` |
+| `README.md` | Sección "Respeto de Bits" completa |
+
+### Conversión Explícita
+
+```python
+# La ÚNICA manera de combinar tipos:
+x = float(5) + 3.14    # ✅ explícito
+y = int(3.14) + 5      # ✅ explícito
+s = str(42) + " items" # ✅ explícito
+
+# NUNCA implícito:
+x = 5 + 3.14           # 💀 BLOQUEADO
+```
 
 ---
 
@@ -315,16 +371,81 @@ enc.ret();
 
 ---
 
-## 10. Conclusión
+## 10. CLI `pyd` — Uso del Compilador
 
-**PyDead-BIB v4.0** tiene un frontend Python muy completo (85%+ de la sintaxis), pero la integración C ABI es **stub** — no funciona realmente. Para alcanzar el objetivo de Python + C ABI nativo:
+### Comandos Principales
 
-1. **Prioridad máxima:** Implementar `LoadLibraryA` y `GetProcAddress` reales
-2. **Siguiente:** Agregar `ctypes.Structure` y `ctypes.POINTER`
-3. **Después:** Completar JIT 2.0 con parallel compilation
+```bash
+# Ejecutar Python con JIT 2.0 (modo por defecto)
+pyd run archivo.py
 
-**Estimación:** 2-3 semanas para C ABI funcional, 1-2 semanas adicionales para JIT 2.0 completo.
+# Debugging paso a paso (13 fases)
+pyd step archivo.py
+
+# Compilar a ejecutable nativo
+pyd py archivo.py -o salida.exe
+
+# Ejecutar directamente
+pyd archivo.py
+```
+
+### Instalación en PATH
+
+**Windows (PowerShell como Admin):**
+```powershell
+# Copiar pyd.exe al directorio de usuario
+Copy-Item target\release\pyd.exe $env:USERPROFILE\.pyd\pyd.exe
+
+# Agregar al PATH
+[Environment]::SetEnvironmentVariable("Path", $env:Path + ";$env:USERPROFILE\.pyd", "User")
+```
+
+**Linux/macOS:**
+```bash
+# Copiar al directorio local
+mkdir -p ~/.local/bin
+cp target/release/pyd ~/.local/bin/
+
+# Agregar al PATH (en ~/.bashrc o ~/.zshrc)
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+### Step Mode — Debugging Detallado
+
+El comando `pyd step` muestra cada fase del compilador:
+
+| Fase | Descripción |
+|------|-------------|
+| 01 | SOURCE CODE — código fuente |
+| 02 | PREPROCESSOR — preprocesamiento |
+| 03 | LEXER — tokens generados |
+| 04 | PARSER — AST construido |
+| 05 | TYPE INFERENCER — tipos inferidos + class layouts |
+| 06 | IR GENERATION — instrucciones IR |
+| 07 | UB DETECTOR — errores detectados |
+| 08-09 | OPTIMIZER + REGALLOC — optimización y registros |
+| 10 | ISA COMPILER — código x86-64 generado |
 
 ---
 
-*Generado por PyDead-BIB Analysis Tool — 2026-03-20*
+## 11. Conclusión
+
+**PyDead-BIB v5.0** tiene un frontend Python muy completo (90%+ de la sintaxis), clases funcionando con métodos, y Type Strictness ULTRA al nivel FORTRAN.
+
+### Logros v5.0
+
+- ✅ Clases con métodos que retornan valores
+- ✅ Type Strictness ULTRA (FORTRAN-style)
+- ✅ CLI `pyd` con run/step/py
+- ✅ Step mode para debugging
+- ✅ GlobalLoad fix para variables globales
+
+### Próximos Pasos
+
+1. **C ABI:** Implementar `LoadLibraryA` y `GetProcAddress` reales
+2. **ctypes:** Agregar `ctypes.Structure` y `ctypes.POINTER`
+3. **JIT 2.0:** Parallel compilation con rayon
+
+---
+
+Generado por PyDead-BIB v5.0 — 2026-03-21

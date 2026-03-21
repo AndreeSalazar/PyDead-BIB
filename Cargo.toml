@@ -1,6 +1,6 @@
 [package]
-name = "adead-bib"
-version = "1.2.0"
+name = "PyDead-bib"
+version = "5.0.0"
 edition = "2021"
 
 [dependencies]
@@ -15,12 +15,12 @@ ash = "0.38"                    # Vulkan bindings (bajo nivel, máximo control)
 gpu-allocator = "0.27"          # Allocator de memoria GPU
 
 [lib]
-name = "adead_bib"
+name = "PyDead_bib"
 path = "src/rust/lib.rs"
 
 [[bin]]
-name = "adb"
+name = "pyd"
 path = "src/rust/main.rs"
 
-# ADead-BIB es 100% Rust - No requiere dependencias de C++
+# PyDead-BIB es 100% Rust - No requiere dependencias de C++
 

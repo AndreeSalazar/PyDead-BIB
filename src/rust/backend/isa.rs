@@ -3035,11 +3035,22 @@ fn compile_instruction(instr: &IRInstruction, func: &AllocatedFunction, enc: &mu
                 enc.add_rsp(32);
             } else {
                 // Normal call: push args into Windows ABI regs
+                // v4.3 FIX: Compile all args first, push to stack, then pop into ABI regs
+                // This prevents clobbering when compiling subsequent args
                 let abi = [X86Reg::RCX, X86Reg::RDX, X86Reg::R8, X86Reg::R9];
-                for (i, arg) in args.iter().enumerate().take(4) {
+                let arg_count = args.len().min(4);
+                
+                // First pass: compile each arg and push result to stack
+                for arg in args.iter().take(4) {
                     compile_instruction(arg, func, enc, saved_regs, stack_size);
-                    if i < abi.len() { enc.mov_rr(abi[i], X86Reg::RAX); }
+                    enc.push(X86Reg::RAX);
                 }
+                
+                // Second pass: pop args into ABI regs in reverse order
+                for i in (0..arg_count).rev() {
+                    enc.pop(abi[i]);
+                }
+                
                 enc.sub_rsp(32);
                 enc.call_label(callee);
                 enc.add_rsp(32);
