@@ -10,11 +10,11 @@
 use PyDead_bib::frontend::python::compile_python_to_ir;
 use PyDead_bib::backend::isa::Target;
 use PyDead_bib::frontend::python::py_preprocessor::PyPreprocessor;
-use PyDead_bib::frontend::python::py_lexer::PyLexer;
-use PyDead_bib::frontend::python::py_parser::PyParser;
-use PyDead_bib::frontend::python::py_types::PyTypeInferencer;
-use PyDead_bib::frontend::python::py_ast::PyStmt;
-use PyDead_bib::middle::ub_detector::{PyUBDetector, UBSeverity};
+use PyDead_bib::frontend::python::lexer::PyLexer;
+use PyDead_bib::frontend::python::parser::PyParser;
+use PyDead_bib::frontend::python::types::PyTypeInferencer;
+use PyDead_bib::frontend::python::ast::PyStmt;
+use PyDead_bib::middle::ub::{PyUBDetector, UBSeverity};
 use PyDead_bib::backend::optimizer;
 use PyDead_bib::backend::reg_alloc;
 use PyDead_bib::backend::isa;
@@ -274,15 +274,15 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     println!("{}{}▸ Phase 03:{} {}LEXER{}", BOLD, BLUE, RESET, CYAN, RESET);
     let mut lexer = PyLexer::new(&preprocessed);
     let tokens = lexer.tokenize();
-    let indent_count = tokens.iter().filter(|t| matches!(t, PyDead_bib::frontend::python::py_lexer::PyToken::Indent)).count();
-    let dedent_count = tokens.iter().filter(|t| matches!(t, PyDead_bib::frontend::python::py_lexer::PyToken::Dedent)).count();
+    let indent_count = tokens.iter().filter(|t| matches!(t, PyDead_bib::frontend::python::lexer::PyToken::Indent)).count();
+    let dedent_count = tokens.iter().filter(|t| matches!(t, PyDead_bib::frontend::python::lexer::PyToken::Dedent)).count();
     println!("  {}tokens:{}  {}{}{}", DIM, RESET, BOLD, tokens.len(), RESET);
     println!("  {}indent:{}  {}/{} pares  {}[{:.3}ms]{}", DIM, RESET, indent_count, dedent_count, DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
 
     // ── Phase 04: Parser ──────────────────────────────────────
     let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 04:{} {}PARSER{}", BOLD, BLUE, RESET, CYAN, RESET);
-    let mut parser = PyDead_bib::frontend::python::py_parser::PyParser::new(tokens);
+    let mut parser = PyDead_bib::frontend::python::parser::PyParser::new(tokens);
     let ast = match parser.parse() {
         Ok(a) => a,
         Err(e) => {
@@ -295,13 +295,13 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     println!("  {}AST:{}     {}{}{} top-level nodes  {}[{:.3}ms]{}", DIM, RESET, BOLD, ast.body.len(), RESET, DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
     for stmt in &ast.body {
         match stmt {
-            PyDead_bib::frontend::python::py_ast::PyStmt::FunctionDef { name, params, .. } => {
+            PyDead_bib::frontend::python::ast::PyStmt::FunctionDef { name, params, .. } => {
                 println!("  {}├─{} {}fn{} {}{}{}({}{}{})", DIM, RESET, MAGENTA, RESET, BOLD, name, RESET, DIM, params.len(), RESET);
             }
-            PyDead_bib::frontend::python::py_ast::PyStmt::ClassDef { name, .. } => {
+            PyDead_bib::frontend::python::ast::PyStmt::ClassDef { name, .. } => {
                 println!("  {}├─{} {}class{} {}{}{}", DIM, RESET, YELLOW, RESET, BOLD, name, RESET);
             }
-            PyDead_bib::frontend::python::py_ast::PyStmt::Import { names } => {
+            PyDead_bib::frontend::python::ast::PyStmt::Import { names } => {
                 for alias in names {
                     println!("  {}├─{} {}import{} {}", DIM, RESET, BLUE, RESET, alias.name);
                 }
@@ -313,7 +313,7 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     // ── Phase 05: Type Inferencer ─────────────────────────────
     let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 05:{} {}TYPE INFERENCER{}", BOLD, BLUE, RESET, CYAN, RESET);
-    let mut inferencer = PyDead_bib::frontend::python::py_types::PyTypeInferencer::new();
+    let mut inferencer = PyDead_bib::frontend::python::types::PyTypeInferencer::new();
     let typed_ast = inferencer.infer(&ast);
     println!("  {}{}✓{} inference complete  {}[{:.3}ms]{}", GREEN, BOLD, RESET, DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
     // v4.0 FASE 3: Show struct layouts
@@ -364,12 +364,12 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
     // ── Phase 07: UB Detector ─────────────────────────────────
     let t0 = std::time::Instant::now();
     println!("{}{}▸ Phase 07:{} {}UB DETECTOR{}", BOLD, BLUE, RESET, CYAN, RESET);
-    let mut ub_detector = PyDead_bib::middle::ub_detector::PyUBDetector::new()
+    let mut ub = PyDead_bib::middle::ub::PyUBDetector::new()
         .with_file(input_file.to_string());
-    let reports = ub_detector.analyze(&ir);
-    let ub_errors = reports.iter().filter(|r| matches!(r.severity, PyDead_bib::middle::ub_detector::UBSeverity::Error)).count();
-    let ub_warnings = reports.iter().filter(|r| matches!(r.severity, PyDead_bib::middle::ub_detector::UBSeverity::Warning)).count();
-    let ub_infos = reports.iter().filter(|r| matches!(r.severity, PyDead_bib::middle::ub_detector::UBSeverity::Info)).count();
+    let reports = ub.analyze(&ir);
+    let ub_errors = reports.iter().filter(|r| matches!(r.severity, PyDead_bib::middle::ub::UBSeverity::Error)).count();
+    let ub_warnings = reports.iter().filter(|r| matches!(r.severity, PyDead_bib::middle::ub::UBSeverity::Warning)).count();
+    let ub_infos = reports.iter().filter(|r| matches!(r.severity, PyDead_bib::middle::ub::UBSeverity::Info)).count();
     if reports.is_empty() {
         println!("  {}{}✓ CLEAN{} — 0 errors, 0 warnings, 0 infos  {}[{:.3}ms]{}", GREEN, BOLD, RESET, DIM, t0.elapsed().as_secs_f64()*1000.0, RESET);
     } else {
@@ -380,9 +380,9 @@ fn compile_python_file(input_file: &str, args: &[String]) -> Result<(), Box<dyn 
             DIM, ub_infos, RESET);
         for report in reports.iter() {
             let (icon, color) = match report.severity {
-                PyDead_bib::middle::ub_detector::UBSeverity::Error => ("✗", RED),
-                PyDead_bib::middle::ub_detector::UBSeverity::Warning => ("⚠", YELLOW),
-                PyDead_bib::middle::ub_detector::UBSeverity::Info => ("ℹ", BLUE),
+                PyDead_bib::middle::ub::UBSeverity::Error => ("✗", RED),
+                PyDead_bib::middle::ub::UBSeverity::Warning => ("⚠", YELLOW),
+                PyDead_bib::middle::ub::UBSeverity::Info => ("ℹ", BLUE),
             };
             println!("  {}{}{}{} {:?}: {}{}", color, BOLD, icon, RESET, report.kind, report.message, RESET);
             if let Some(suggestion) = &report.suggestion {
@@ -530,13 +530,13 @@ fn jit_execute(input_file: &str) -> Result<(), Box<dyn std::error::Error>> {
 
     // Parse
     let t0 = std::time::Instant::now();
-    let mut parser = PyDead_bib::frontend::python::py_parser::PyParser::new(tokens);
+    let mut parser = PyDead_bib::frontend::python::parser::PyParser::new(tokens);
     let ast = parser.parse().map_err(|e| format!("Parse error: {}", e))?;
     let t_parse = t0.elapsed();
 
     // Type inference
     let t0 = std::time::Instant::now();
-    let mut inferencer = PyDead_bib::frontend::python::py_types::PyTypeInferencer::new();
+    let mut inferencer = PyDead_bib::frontend::python::types::PyTypeInferencer::new();
     let typed_ast = inferencer.infer(&ast);
     let t_types = t0.elapsed();
 
@@ -555,10 +555,10 @@ fn jit_execute(input_file: &str) -> Result<(), Box<dyn std::error::Error>> {
 
     // UB detect
     let t0 = std::time::Instant::now();
-    let mut ub_detector = PyDead_bib::middle::ub_detector::PyUBDetector::new()
+    let mut ub = PyDead_bib::middle::ub::PyUBDetector::new()
         .with_file(input_file.to_string());
-    let reports = ub_detector.analyze(&ir);
-    let ub_errors = reports.iter().filter(|r| matches!(r.severity, PyDead_bib::middle::ub_detector::UBSeverity::Error)).count();
+    let reports = ub.analyze(&ir);
+    let ub_errors = reports.iter().filter(|r| matches!(r.severity, PyDead_bib::middle::ub::UBSeverity::Error)).count();
     if ub_errors > 0 {
         return Err(format!("{} UB error(s)", ub_errors).into());
     }
@@ -776,7 +776,7 @@ fn run_test_suite() -> Result<(), Box<dyn std::error::Error>> {
         let preprocessed = preprocessor.process(&source);
         let mut lexer = PyLexer::new(&preprocessed);
         let tokens = lexer.tokenize();
-        let mut parser = PyDead_bib::frontend::python::py_parser::PyParser::new(tokens);
+        let mut parser = PyDead_bib::frontend::python::parser::PyParser::new(tokens);
         let ast = match parser.parse() {
             Ok(a) => a,
             Err(e) => {
@@ -785,7 +785,7 @@ fn run_test_suite() -> Result<(), Box<dyn std::error::Error>> {
                 continue;
             }
         };
-        let mut inferencer = PyDead_bib::frontend::python::py_types::PyTypeInferencer::new();
+        let mut inferencer = PyDead_bib::frontend::python::types::PyTypeInferencer::new();
         let typed_ast = inferencer.infer(&ast);
         let ir = match compile_python_to_ir(&typed_ast) {
             Ok(i) => i,
@@ -1065,7 +1065,7 @@ fn step_compile_debug(input_file: &str) -> Result<(), Box<dyn std::error::Error>
     // PHASE 04: PARSER — Show AST
     // ══════════════════════════════════════════════════════════════════════
     println!("{}{}═══ PHASE 04: PARSER (AST) ══════════════════════════════════════════════{}", BOLD, CYAN, RESET);
-    let mut parser = PyDead_bib::frontend::python::py_parser::PyParser::new(tokens);
+    let mut parser = PyDead_bib::frontend::python::parser::PyParser::new(tokens);
     let ast = match parser.parse() {
         Ok(a) => a,
         Err(e) => {
@@ -1083,7 +1083,7 @@ fn step_compile_debug(input_file: &str) -> Result<(), Box<dyn std::error::Error>
     // PHASE 05: TYPE INFERENCER
     // ══════════════════════════════════════════════════════════════════════
     println!("{}{}═══ PHASE 05: TYPE INFERENCER ══════════════════════════════════════════{}", BOLD, CYAN, RESET);
-    let mut inferencer = PyDead_bib::frontend::python::py_types::PyTypeInferencer::new();
+    let mut inferencer = PyDead_bib::frontend::python::types::PyTypeInferencer::new();
     let typed_ast = inferencer.infer(&ast);
     println!("  {}✓{} Type inference complete", GREEN, RESET);
     
@@ -1143,17 +1143,17 @@ fn step_compile_debug(input_file: &str) -> Result<(), Box<dyn std::error::Error>
     // PHASE 07: UB DETECTOR
     // ══════════════════════════════════════════════════════════════════════
     println!("{}{}═══ PHASE 07: UB DETECTOR ═══════════════════════════════════════════════{}", BOLD, CYAN, RESET);
-    let mut ub_detector = PyDead_bib::middle::ub_detector::PyUBDetector::new()
+    let mut ub = PyDead_bib::middle::ub::PyUBDetector::new()
         .with_file(input_file.to_string());
-    let reports = ub_detector.analyze(&ir);
+    let reports = ub.analyze(&ir);
     if reports.is_empty() {
         println!("  {}{}✓ CLEAN{} — No UB detected", GREEN, BOLD, RESET);
     } else {
         for report in reports.iter() {
             let (icon, color) = match report.severity {
-                PyDead_bib::middle::ub_detector::UBSeverity::Error => ("✗", RED),
-                PyDead_bib::middle::ub_detector::UBSeverity::Warning => ("⚠", YELLOW),
-                PyDead_bib::middle::ub_detector::UBSeverity::Info => ("ℹ", BLUE),
+                PyDead_bib::middle::ub::UBSeverity::Error => ("✗", RED),
+                PyDead_bib::middle::ub::UBSeverity::Warning => ("⚠", YELLOW),
+                PyDead_bib::middle::ub::UBSeverity::Info => ("ℹ", BLUE),
             };
             println!("  {}{}{}{} {:?}: {}", color, BOLD, icon, RESET, report.kind, report.message);
         }

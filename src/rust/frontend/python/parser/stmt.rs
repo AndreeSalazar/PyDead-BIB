@@ -1,7 +1,11 @@
-use super::super::py_ast::*;
+use super::PyParser;
+use crate::frontend::python::ast::*;
+use crate::frontend::python::lexer::*;
+
+impl PyParser {
     // ── Statement parsing ────────────────────────────────
 
-    fn parse_statement(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
+    pub fn parse_statement(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
         self.skip_newlines();
 
         match self.peek() {
@@ -29,7 +33,7 @@ use super::super::py_ast::*;
         }
     }
 
-    fn parse_function_def(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
+    pub fn parse_function_def(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
         let is_async = self.check(&PyToken::Async);
         if is_async { self.advance_tok(); }
         self.expect(&PyToken::Def)?;
@@ -61,7 +65,7 @@ use super::super::py_ast::*;
         })
     }
 
-    fn parse_class_def(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
+    pub fn parse_class_def(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
         self.expect(&PyToken::Class)?;
         let name = self.expect_identifier()?;
 
@@ -91,7 +95,7 @@ use super::super::py_ast::*;
         })
     }
 
-    fn parse_if(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
+    pub fn parse_if(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
         self.expect(&PyToken::If)?;
         let test = self.parse_expr()?;
         self.expect(&PyToken::Colon)?;
@@ -117,7 +121,7 @@ use super::super::py_ast::*;
         Ok(PyStmt::If { test, body, elif_clauses, orelse })
     }
 
-    fn parse_while(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
+    pub fn parse_while(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
         self.expect(&PyToken::While)?;
         let test = self.parse_expr()?;
         self.expect(&PyToken::Colon)?;
@@ -134,7 +138,7 @@ use super::super::py_ast::*;
         Ok(PyStmt::While { test, body, orelse })
     }
 
-    fn parse_for(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
+    pub fn parse_for(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
         self.expect(&PyToken::For)?;
         // Parse target as simple name(s), not full expr (avoids consuming 'in' as cmp op)
         let target = self.parse_atom()?;
@@ -157,7 +161,7 @@ use super::super::py_ast::*;
         })
     }
 
-    fn parse_try(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
+    pub fn parse_try(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
         self.expect(&PyToken::Try)?;
         self.expect(&PyToken::Colon)?;
         let body = self.parse_block()?;
@@ -205,7 +209,7 @@ use super::super::py_ast::*;
         Ok(PyStmt::Try { body, handlers, orelse, finalbody })
     }
 
-    fn parse_with(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
+    pub fn parse_with(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
         self.expect(&PyToken::With)?;
         let mut items = Vec::new();
         loop {
@@ -226,7 +230,7 @@ use super::super::py_ast::*;
         Ok(PyStmt::With { items, body, is_async: false })
     }
 
-    fn parse_return(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
+    pub fn parse_return(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
         self.expect(&PyToken::Return)?;
         if self.check(&PyToken::Newline) || self.check(&PyToken::Eof) || self.check(&PyToken::Dedent) {
             return Ok(PyStmt::Return(std::option::Option::None));
@@ -235,7 +239,7 @@ use super::super::py_ast::*;
         Ok(PyStmt::Return(Some(value)))
     }
 
-    fn parse_import(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
+    pub fn parse_import(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
         self.expect(&PyToken::Import)?;
         let mut names = Vec::new();
         loop {
@@ -259,7 +263,7 @@ use super::super::py_ast::*;
         Ok(PyStmt::Import { names })
     }
 
-    fn parse_import_from(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
+    pub fn parse_import_from(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
         self.expect(&PyToken::From)?;
 
         let mut level = 0;
@@ -305,7 +309,7 @@ use super::super::py_ast::*;
         Ok(PyStmt::ImportFrom { module, names, level })
     }
 
-    fn parse_raise(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
+    pub fn parse_raise(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
         self.expect(&PyToken::Raise)?;
         if self.check(&PyToken::Newline) || self.check(&PyToken::Eof) {
             return Ok(PyStmt::Raise { exc: std::option::Option::None, cause: std::option::Option::None });
@@ -320,7 +324,7 @@ use super::super::py_ast::*;
         Ok(PyStmt::Raise { exc: Some(exc), cause })
     }
 
-    fn parse_assert(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
+    pub fn parse_assert(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
         self.expect(&PyToken::Assert)?;
         let test = self.parse_expr()?;
         let msg = if self.check(&PyToken::Comma) {
@@ -332,7 +336,7 @@ use super::super::py_ast::*;
         Ok(PyStmt::Assert { test, msg })
     }
 
-    fn parse_del(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
+    pub fn parse_del(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
         self.expect(&PyToken::Del)?;
         let mut targets = Vec::new();
         loop {
@@ -343,7 +347,7 @@ use super::super::py_ast::*;
         Ok(PyStmt::Delete(targets))
     }
 
-    fn parse_global(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
+    pub fn parse_global(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
         self.expect(&PyToken::Global)?;
         let mut names = Vec::new();
         loop {
@@ -354,7 +358,7 @@ use super::super::py_ast::*;
         Ok(PyStmt::Global(names))
     }
 
-    fn parse_nonlocal(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
+    pub fn parse_nonlocal(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
         self.expect(&PyToken::Nonlocal)?;
         let mut names = Vec::new();
         loop {
@@ -365,7 +369,7 @@ use super::super::py_ast::*;
         Ok(PyStmt::Nonlocal(names))
     }
 
-    fn parse_match(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
+    pub fn parse_match(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
         self.expect(&PyToken::Match)?;
         let subject = self.parse_expr()?;
         self.expect(&PyToken::Colon)?;
@@ -393,7 +397,7 @@ use super::super::py_ast::*;
         Ok(PyStmt::Match { subject, cases })
     }
 
-    fn parse_pattern(&mut self) -> Result<PyPattern, Box<dyn std::error::Error>> {
+    pub fn parse_pattern(&mut self) -> Result<PyPattern, Box<dyn std::error::Error>> {
         match self.peek() {
             Some(PyToken::Identifier(s)) if s == "_" => {
                 self.advance_tok();
@@ -416,7 +420,7 @@ use super::super::py_ast::*;
         }
     }
 
-    fn parse_decorated(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
+    pub fn parse_decorated(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
         let mut decorators = Vec::new();
         while let Some(PyToken::Decorator(name)) = self.peek() {
             let dec_name = name.clone();
@@ -434,7 +438,7 @@ use super::super::py_ast::*;
         Ok(stmt)
     }
 
-    fn parse_expr_or_assign(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
+    pub fn parse_expr_or_assign(&mut self) -> Result<PyStmt, Box<dyn std::error::Error>> {
         let expr = self.parse_expr()?;
 
         // Check for tuple target: x, y = ...
@@ -511,3 +515,4 @@ use super::super::py_ast::*;
         Ok(PyStmt::Expr(expr))
     }
 
+}

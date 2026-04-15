@@ -18,12 +18,12 @@
 // Sin CPython. Sin GIL. Sin runtime. Solo PyDead-BIB. 💀🦈
 // ============================================================
 
-pub mod py_ast;
+pub mod ast;
 pub mod py_import_resolver;
-pub mod py_lexer;
-pub mod py_parser;
+pub mod lexer;
+pub mod parser;
 pub mod py_preprocessor;
-pub mod py_to_ir;
-pub mod py_types;
+pub mod to_ir;
+pub mod types;
 
-pub use py_to_ir::compile_python_to_ir;
+pub use to_ir::compile_python_to_ir;

@@ -1,3 +1,5 @@
-pub mod memory;
 pub mod types;
-pub mod control;
+pub mod core;
+
+pub use types::*;
+pub use core::*;

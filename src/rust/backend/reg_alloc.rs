@@ -53,7 +53,7 @@ impl X86Reg {
 // ── Allocation result ─────────────────────────────────────────
 pub struct AllocatedProgram {
     pub functions: Vec<AllocatedFunction>,
-    pub globals: Vec<crate::frontend::python::py_to_ir::IRGlobal>,
+    pub globals: Vec<crate::frontend::python::to_ir::IRGlobal>,
     pub string_data: Vec<(String, String)>,
     pub stats: AllocStats,
 }

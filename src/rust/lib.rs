@@ -17,11 +17,11 @@
 // 256-BIT NATIVO — YMM/AVX2 — SoA NATURAL
 //
 // Pipeline Python: Source → Preprocessor → ImportResolver → Lexer →
-//                  Parser → TypeInferencer → IR (ADeadOp) → UB_Detector →
+//                  Parser → TypeInferencer → IR (ADeadOp) → ub →
 //                  Optimizer → RegAlloc → BitResolver → ISA → Output
 //
 // Pipeline C99:    Source → CPreprocessor → CLexer → CParser →
-//                  CToIR → Program(IR) → UB_Detector →
+//                  CToIR → Program(IR) → ub →
 //                  Optimizer → RegAlloc → ISA → Output
 //
 // Targets: windows | linux | fastos64 | fastos128 | fastos256 | all

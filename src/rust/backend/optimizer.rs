@@ -6,12 +6,12 @@
 // ============================================================
 
 use crate::middle::ir::{IRConstValue, IRInstruction, IROp, IRType};
-use crate::frontend::python::py_to_ir::IRProgram;
+use crate::frontend::python::to_ir::IRProgram;
 
 // ── Optimization pass result ──────────────────────────────────
 pub struct OptimizedProgram {
     pub functions: Vec<OptimizedFunction>,
-    pub globals: Vec<crate::frontend::python::py_to_ir::IRGlobal>,
+    pub globals: Vec<crate::frontend::python::to_ir::IRGlobal>,
     pub string_data: Vec<(String, String)>,
     pub stats: OptStats,
 }

@@ -1,64 +1,4 @@
-// ============================================================
-// Python UB Detector for PyDead-BIB
-// ============================================================
-// Heredado de ADead-BIB v8.0 (21 tipos C/C++)
-// + Python-specific UB detection
-//
-// CPython: todos estos → excepción en RUNTIME ❌
-// PyDead-BIB: todos → detectados en COMPILE TIME ✓
-// ============================================================
-
-/// Python-specific undefined behavior types
-#[derive(Debug, Clone, PartialEq)]
-pub enum PythonUB {
-    // ── Heredados de C (aplicables) ──────────────────────
-    DivisionByZero,
-    IntegerOverflow,
-    UninitializedVariable,
-
-    // ── Python-specific ──────────────────────────────────
-    NoneDeref,                 // None.atributo → AttributeError pre-detectado
-    IndexOutOfBounds,          // lista[100] con lista de 10 → pre-detectado
-    KeyNotFound,               // dict["x"] sin "x" → pre-detectado
-    TypeMismatch,              // "hola" + 42 → TypeError pre-detectado
-    InfiniteRecursion,         // recursión sin base case → detectado
-    CircularImport,            // A importa B, B importa A → detectado
-    MutableDefaultArg,         // def f(x=[]) → bug clásico Python → warning
-    GlobalWithoutDeclaration,  // modifica global sin 'global' → warning
-    IteratorExhausted,         // reusar generator ya consumido → detectado
-    UnpackMismatch,            // a, b = [1, 2, 3] → demasiados valores
-
-    // ── v4.2 — Memory Safety (C ABI) ─────────────────────
-    UseAfterFree,              // Usar memoria después de liberar
-    BufferOverflow,            // Escribir fuera de bounds de array/struct
-    DoubleFree,                // Liberar memoria ya liberada
-    NullPointerDeref,          // Dereferenciar puntero nulo en C ABI
-
-    // ── v4.3 — Tipos Estrictos (como Fortran) ────────────
-    MixedArithmetic,           // int + float → ERROR (debe ser explícito)
-    ImplicitCoercion,          // Conversión implícita de tipos → ERROR
-}
-
-/// Severity level for UB reports
-#[derive(Debug, Clone, PartialEq)]
-pub enum UBSeverity {
-    Error,
-    Warning,
-    Info,
-}
-
-/// UB detection report
-#[derive(Debug, Clone)]
-pub struct UBReport {
-    pub kind: PythonUB,
-    pub severity: UBSeverity,
-    pub message: String,
-    pub line: usize,
-    pub col: usize,
-    pub file: String,
-    pub suggestion: Option<String>,
-}
-
+use super::types::{PythonUB, UBSeverity, UBReport};
 /// Python UB Detector — compile-time error detection
 pub struct PyUBDetector {
     reports: Vec<UBReport>,
@@ -88,7 +28,7 @@ impl PyUBDetector {
     }
 
     /// Analyze IR program for undefined behavior
-    pub fn analyze(&mut self, program: &crate::frontend::python::py_to_ir::IRProgram) -> &[UBReport] {
+    pub fn analyze(&mut self, program: &crate::frontend::python::to_ir::IRProgram) -> &[UBReport] {
         // Check each function
         for func in &program.functions {
             self.check_function(func);
@@ -303,7 +243,7 @@ impl PyUBDetector {
         }
     }
 
-    fn check_global(&mut self, global: &crate::frontend::python::py_to_ir::IRGlobal) {
+    fn check_global(&mut self, global: &crate::frontend::python::to_ir::IRGlobal) {
         // Check for uninitialized variables
         if global.init_value.is_none() {
             self.reports.push(UBReport {
@@ -372,7 +312,7 @@ impl PyUBDetector {
             return Ok(());
         }
 
-        let mut msg = String::from("\n╔══════════════════════════════════════════════════════════════╗\n");
+        let mut msg = String::from("\n╔═══════════════════════════════════════════════════════════════╗\n");
         msg.push_str("║  PyDead-BIB: COMPILACIÓN BLOQUEADA — UB DETECTADO                             ║\n");
         msg.push_str("║  PyDead-BIB es implícitamente ESTRICTO: UB NO EXISTE                          ║\n");
         msg.push_str("╚═══════════════════════════════════════════════════════════════════════════════╝\n\n");
@@ -394,7 +334,7 @@ impl PyUBDetector {
     }
 
     /// Verificar programa completo y bloquear si hay UB
-    pub fn verify_program(&mut self, program: &crate::frontend::python::py_to_ir::IRProgram) -> Result<(), String> {
+    pub fn verify_program(&mut self, program: &crate::frontend::python::to_ir::IRProgram) -> Result<(), String> {
         self.analyze(program);
         self.verify_no_ub()
     }
