@@ -1,102 +1,21 @@
-// ============================================================
-// PyDead-BIB ISA Compiler v1.3 — Full Runtime
-// ============================================================
-// IR → x86-64 machine code bytes
-// Direct encoding — sin assembler externo — sin NASM
-// Windows: GetStdHandle + WriteFile via IAT
-// Linux: write syscall direct
-// Runtime stubs: print_str, itoa, ftoa, print_nl
-// Supports: int, float, str, bool, if/else, for, while, funcs
-// ============================================================
+use super::types::*;
 
-use crate::middle::ir::{IRConstValue, IRCmpOp, IRInstruction, IROp};
-use crate::backend::reg_alloc::{AllocatedFunction, AllocatedProgram, X86Reg};
+use super::compiler::*;
+use super::stubs::*;
+use super::instructions::*;
+use crate::middle::ir::*;
+use crate::backend::reg_alloc::*;
+use std::collections::HashMap;
 
-// ── Compilation target ────────────────────────────────────────
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Target {
-    Windows,
-    Linux,
-    FastOS64,
-    FastOS128,
-    FastOS256,
-}
-
-impl Target {
-    pub fn from_str(s: &str) -> Self {
-        match s {
-            "windows" | "win64" | "pe" => Target::Windows,
-            "linux" | "elf" => Target::Linux,
-            "fastos64" => Target::FastOS64,
-            "fastos128" => Target::FastOS128,
-            "fastos256" => Target::FastOS256,
-            _ => Target::Windows,
-        }
-    }
-}
-
-// ── IAT slot indices (order must match output.rs import table) ──
-pub const IAT_GET_STD_HANDLE: usize = 0;
-pub const IAT_WRITE_FILE: usize = 1;
-pub const IAT_EXIT_PROCESS: usize = 2;
-pub const IAT_GET_PROCESS_HEAP: usize = 3;
-pub const IAT_HEAP_ALLOC: usize = 4;
-pub const IAT_GET_CURRENT_DIRECTORY: usize = 5;
-pub const IAT_GET_FILE_ATTRIBUTES: usize = 6;
-pub const IAT_GET_CURRENT_PROCESS_ID: usize = 7;
-pub const IAT_CREATE_FILE: usize = 8;
-pub const IAT_READ_FILE: usize = 9;
-pub const IAT_CLOSE_HANDLE: usize = 10;
-pub const IAT_CREATE_DIRECTORY: usize = 11;
-pub const IAT_DELETE_FILE: usize = 12;
-pub const IAT_MOVE_FILE: usize = 13;
-pub const IAT_FIND_FIRST_FILE: usize = 14;
-pub const IAT_FIND_NEXT_FILE: usize = 15;
-pub const IAT_FIND_CLOSE: usize = 16;
-pub const IAT_GET_ENVIRONMENT_VARIABLE: usize = 17;
-pub const IAT_GET_COMMAND_LINE: usize = 18;
-pub const IAT_GET_FILE_SIZE: usize = 19;
-pub const IAT_LOAD_LIBRARY: usize = 20;
-pub const IAT_GET_PROC_ADDRESS: usize = 21;
-pub const IAT_FREE_LIBRARY: usize = 22;
-pub const IAT_SLOT_COUNT: usize = 23;
-
-// ── Compiled code section ─────────────────────────────────────
-pub struct CompiledProgram {
-    pub text: Vec<u8>,
-    pub data: Vec<u8>,
-    pub data_labels: Vec<(String, u32)>,
-    pub functions: Vec<CompiledFunction>,
-    pub entry_point: u32,
-    pub target: Target,
-    pub iat_fixups: Vec<(u32, usize)>,  // (offset_in_text, iat_slot_index)
-    pub data_fixups: Vec<(u32, String)>, // (offset_in_text, data_label) for LEA
-    pub stats: ISAStats,
-}
-
-pub struct CompiledFunction {
-    pub name: String,
-    pub offset: u32,
-    pub size: u32,
-}
-
-#[derive(Debug, Default)]
-pub struct ISAStats {
-    pub total_bytes: usize,
-    pub functions_compiled: usize,
-    pub instructions_emitted: usize,
-}
-
-// ── x86-64 Encoder ────────────────────────────────────────────
-pub(crate) struct Encoder {
-    pub(crate) code: Vec<u8>,
-    pub(crate) data: Vec<u8>,
-    pub(crate) data_labels: Vec<(String, u32)>,
-    pub(crate) label_offsets: Vec<(String, u32)>,
-    pub(crate) fixups: Vec<(usize, String)>,
-    pub(crate) iat_fixups: Vec<(u32, usize)>,
-    pub(crate) data_fixups: Vec<(u32, String)>,
-    pub(crate) stats: ISAStats,
+pub struct Encoder {
+    code: Vec<u8>,
+    data: Vec<u8>,
+    data_labels: Vec<(String, u32)>,
+    label_offsets: Vec<(String, u32)>,
+    fixups: Vec<(usize, String)>,
+    iat_fixups: Vec<(u32, usize)>,
+    data_fixups: Vec<(u32, String)>,
+    stats: ISAStats,
 }
 
 impl Encoder {
@@ -104,12 +23,12 @@ impl Encoder {
         Self {
             code: Vec::new(),
             data: Vec::new(),
-            pub(crate) data_labels: Vec::new(),
-            pub(crate) label_offsets: Vec::new(),
-            pub(crate) fixups: Vec::new(),
-            pub(crate) iat_fixups: Vec::new(),
-            pub(crate) data_fixups: Vec::new(),
-            pub(crate) stats: ISAStats::default(),
+            data_labels: Vec::new(),
+            label_offsets: Vec::new(),
+            fixups: Vec::new(),
+            iat_fixups: Vec::new(),
+            data_fixups: Vec::new(),
+            stats: ISAStats::default(),
         }
     }
 
@@ -275,4 +194,91 @@ impl Encoder {
         self.data.extend_from_slice(&val.to_le_bytes());
     }
 
+    // ── SSE2 float instructions ─────────────────────────────
+    // MOVSD XMM, [RIP+disp32]  — load f64 from data
+    fn movsd_xmm_data(&mut self, xmm: u8, data_label: &str) {
+        // F2 0F 10 /r = MOVSD xmm1, xmm2/m64
+        // ModRM: 00 reg 101 = RIP+disp32
+        self.emit(&[0xF2, 0x0F, 0x10, 0x05 | (xmm << 3)]);
+        let fixup_pos = self.pos();
+        self.emit_u32_le(0);
+        self.data_fixups.push((fixup_pos, data_label.to_string()));
+    }
+
+    // MOVSD xmm1, xmm2
+    fn movsd_xmm_xmm(&mut self, dst: u8, src: u8) {
+        // F2 0F 10 /r (reg-reg: mod=11)
+        self.emit(&[0xF2, 0x0F, 0x10, 0xC0 | (dst << 3) | src]);
+    }
+
+    // ADDSD xmm1, xmm2
+    fn addsd(&mut self, dst: u8, src: u8) {
+        self.emit(&[0xF2, 0x0F, 0x58, 0xC0 | (dst << 3) | src]);
+    }
+    // SUBSD xmm1, xmm2
+    fn subsd(&mut self, dst: u8, src: u8) {
+        self.emit(&[0xF2, 0x0F, 0x5C, 0xC0 | (dst << 3) | src]);
+    }
+    // MULSD xmm1, xmm2
+    fn mulsd(&mut self, dst: u8, src: u8) {
+        self.emit(&[0xF2, 0x0F, 0x59, 0xC0 | (dst << 3) | src]);
+    }
+    // DIVSD xmm1, xmm2
+    fn divsd(&mut self, dst: u8, src: u8) {
+        self.emit(&[0xF2, 0x0F, 0x5E, 0xC0 | (dst << 3) | src]);
+    }
+    // CVTTSD2SI reg64, xmm  (truncate f64 → i64)
+    fn cvttsd2si(&mut self, dst: X86Reg, xmm: u8) {
+        // F2 REX.W 0F 2C /r
+        let mut rex: u8 = 0x48;
+        if dst.encoding() >= 8 { rex |= 0x04; }
+        self.emit(&[0xF2, rex, 0x0F, 0x2C, 0xC0 | ((dst.encoding() & 7) << 3) | xmm]);
+    }
+    // CVTSI2SD xmm, reg64  (i64 → f64)
+    fn cvtsi2sd(&mut self, xmm: u8, src: X86Reg) {
+        // F2 REX.W 0F 2A /r
+        let mut rex: u8 = 0x48;
+        if src.encoding() >= 8 { rex |= 0x01; }
+        self.emit(&[0xF2, rex, 0x0F, 0x2A, 0xC0 | (xmm << 3) | (src.encoding() & 7)]);
+    }
+    // MOVQ RAX, XMM0 (move 64 bits from xmm to gpr)
+    fn movq_rax_xmm0(&mut self) {
+        // 66 48 0F 7E C0 = MOVQ RAX, XMM0
+        self.emit(&[0x66, 0x48, 0x0F, 0x7E, 0xC0]);
+    }
+    // MOVQ XMM0, RAX
+    fn movq_xmm0_rax(&mut self) {
+        // 66 48 0F 6E C0 = MOVQ XMM0, RAX
+        self.emit(&[0x66, 0x48, 0x0F, 0x6E, 0xC0]);
+    }
+    // XORPD xmm, xmm (zero a float register)
+    fn xorpd(&mut self, xmm: u8) {
+        self.emit(&[0x66, 0x0F, 0x57, 0xC0 | (xmm << 3) | xmm]);
+    }
+    // UCOMISD xmm1, xmm2
+    fn ucomisd(&mut self, a: u8, b: u8) {
+        self.emit(&[0x66, 0x0F, 0x2E, 0xC0 | (a << 3) | b]);
+    }
+    // MULSD xmm, [RIP+disp32]
+    fn mulsd_data(&mut self, xmm: u8, label: &str) {
+        self.emit(&[0xF2, 0x0F, 0x59, 0x05 | (xmm << 3)]);
+        let fixup_pos = self.pos();
+        self.emit_u32_le(0);
+        self.data_fixups.push((fixup_pos, label.to_string()));
+    }
+
+    fn resolve_label_fixups(&mut self) {
+        for (fixup_off, target_lbl) in &self.fixups {
+            if let Some((_, target_off)) = self.label_offsets.iter().find(|(n, _)| n == target_lbl) {
+                let rel32 = (*target_off as i32) - (*fixup_off as i32 + 4);
+                let bytes = rel32.to_le_bytes();
+                self.code[*fixup_off] = bytes[0];
+                self.code[*fixup_off + 1] = bytes[1];
+                self.code[*fixup_off + 2] = bytes[2];
+                self.code[*fixup_off + 3] = bytes[3];
+            }
+        }
+    }
 }
+
+// ── Main ISA compiler ─────────────────────────────────────────
