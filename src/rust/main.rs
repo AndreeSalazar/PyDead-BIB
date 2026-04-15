@@ -598,6 +598,8 @@ fn jit_execute(input_file: &str) -> Result<(), Box<dyn std::error::Error>> {
 
     // JIT execute — MEJORA 7: Instant Entry
     println!("  {}{}▸ JIT KILLER:{} dispatch table → instant image → VirtualAlloc → JMP", BOLD, MAGENTA, RESET);
+    println!("\n  {}{}╭───────────────────[  PROGRAM OUTPUT  ]───────────────────╮{}{}", BOLD, CYAN, RESET, PY_YELLOW_BRIGHT);
+    println!();
 
     match PyDead_bib::backend::jit::execute_in_memory_with_stats(
         &compiled.text,
@@ -609,6 +611,9 @@ fn jit_execute(input_file: &str) -> Result<(), Box<dyn std::error::Error>> {
         source_hash,
     ) {
         Ok((code, stats)) => {
+            print!("{}", RESET); // Reset output color
+            if stats.exec_ms > 0.0 { println!(); } // ensure newline if program didn't
+            println!("  {}{}╰──────────────────────────────────────────────────────────╯{}", BOLD, CYAN, RESET);
             println!();
             println!("  {}{}▸ JIT Stats:{}", BOLD, YELLOW, RESET);
             println!("  {}  alloc:{}   {:.3}ms  (.text RWX, .data RW)", DIM, RESET, stats.alloc_ms);

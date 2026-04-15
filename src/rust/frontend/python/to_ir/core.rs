@@ -47,6 +47,13 @@ impl PyToIR {
             }
             
             let mut main_func = IRFunction::new("__main__".to_string(), vec![], IRType::Void);
+            
+            // v2.1 FIX: Provide __name__ = "__main__" so 'if __name__ == "__main__":' works seamlessly
+            let name_label = self.add_string("__main__", &mut program);
+            self.all_globals.insert("__name__".to_string());
+            main_func.body.push(IRInstruction::LoadString(name_label));
+            main_func.body.push(IRInstruction::GlobalStore("__name__".to_string()));
+
             for stmt in &toplevel_stmts {
                 self.convert_body_stmt(stmt, &mut main_func, &mut program)?;
             }
@@ -211,6 +218,10 @@ impl PyToIR {
     }
 
     pub fn add_string(&mut self, s: &str, program: &mut IRProgram) -> String {
+        // Deduplicate strings to allow pointer equality
+        if let Some((label, _)) = program.string_data.iter().find(|(_, val)| val == s) {
+            return label.clone();
+        }
         let label = format!("__str{}", self.string_counter);
         self.string_counter += 1;
         program.string_data.push((label.clone(), s.to_string()));

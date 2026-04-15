@@ -37,13 +37,13 @@ pub fn execute_in_memory_with_stats(text: &[u8], data: &[u8], entry_offset: u32,
 }
 
 #[cfg(target_os = "windows")]
-fn execute_windows_v2(text: &[u8], data: &[u8], entry_offset: u32, data_fixups: &[(u32, String)], data_labels: &[(String, u32)], iat_fixups: &[(u32, usize)]) -> Result<i32, String> {
+pub fn execute_windows_v2(text: &[u8], data: &[u8], entry_offset: u32, data_fixups: &[(u32, String)], data_labels: &[(String, u32)], iat_fixups: &[(u32, usize)]) -> Result<i32, String> {
     let (code, _stats) = execute_windows_v2_stats(text, data, entry_offset, data_fixups, data_labels, iat_fixups, 0)?;
     Ok(code)
 }
 
 #[cfg(target_os = "windows")]
-fn execute_windows_v2_stats(text: &[u8], data: &[u8], entry_offset: u32, data_fixups: &[(u32, String)], data_labels: &[(String, u32)], iat_fixups: &[(u32, usize)], source_hash: u64) -> Result<(i32, JitStats), String> {
+pub fn execute_windows_v2_stats(text: &[u8], data: &[u8], entry_offset: u32, data_fixups: &[(u32, String)], data_labels: &[(String, u32)], iat_fixups: &[(u32, usize)], source_hash: u64) -> Result<(i32, JitStats), String> {
     use std::ptr;
 
     const MEM_COMMIT: u32 = 0x1000;
@@ -53,8 +53,8 @@ fn execute_windows_v2_stats(text: &[u8], data: &[u8], entry_offset: u32, data_fi
     const PAGE_READWRITE: u32 = 0x04;  // MEJORA 5: .data non-executable
 
     extern "system" {
-        fn VirtualAlloc(addr: *mut u8, size: usize, alloc_type: u32, protect: u32) -> *mut u8;
-        fn VirtualFree(addr: *mut u8, size: usize, free_type: u32) -> i32;
+        pub fn VirtualAlloc(addr: *mut u8, size: usize, alloc_type: u32, protect: u32) -> *mut u8;
+        pub fn VirtualFree(addr: *mut u8, size: usize, free_type: u32) -> i32;
     }
 
     let total_start = std::time::Instant::now();
@@ -129,7 +129,7 @@ fn execute_windows_v2_stats(text: &[u8], data: &[u8], entry_offset: u32, data_fi
 }
 
 #[cfg(target_os = "linux")]
-fn execute_linux(text: &[u8], data: &[u8], entry_offset: u32, data_fixups: &[(u32, String)], data_labels: &[(String, u32)]) -> Result<i32, String> {
+pub fn execute_linux(text: &[u8], data: &[u8], entry_offset: u32, data_fixups: &[(u32, String)], data_labels: &[(String, u32)]) -> Result<i32, String> {
     use std::ptr;
 
     const PROT_READ: i32 = 0x1;
@@ -139,8 +139,8 @@ fn execute_linux(text: &[u8], data: &[u8], entry_offset: u32, data_fixups: &[(u3
     const MAP_ANONYMOUS: i32 = 0x20;
 
     extern "C" {
-        fn mmap(addr: *mut u8, len: usize, prot: i32, flags: i32, fd: i32, offset: i64) -> *mut u8;
-        fn munmap(addr: *mut u8, len: usize) -> i32;
+        pub fn mmap(addr: *mut u8, len: usize, prot: i32, flags: i32, fd: i32, offset: i64) -> *mut u8;
+        pub fn munmap(addr: *mut u8, len: usize) -> i32;
     }
 
     let text_size = text.len() + 4096;

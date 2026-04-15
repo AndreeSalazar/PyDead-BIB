@@ -9,7 +9,7 @@ use std::sync::Mutex;
 // ── MEJORA 3: Thermal Cache ────────────────────────────────
 // Cache compiled bytes across runs within same session
 // Key = hash of source, Value = pre-patched text + data
-struct CacheEntry {
+pub struct CacheEntry {
     text: Vec<u8>,
     data: Vec<u8>,
     entry_offset: u32,

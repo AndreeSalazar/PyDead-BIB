@@ -91,7 +91,7 @@ pub fn compile(program: &AllocatedProgram, target: Target) -> CompiledProgram {
 }
 
 // ── Runtime stubs ─────────────────────────────────────────────
-fn emit_runtime_stubs(enc: &mut Encoder, target: Target) {
+pub fn emit_runtime_stubs(enc: &mut Encoder, target: Target) {
     // __pyb_print_str: RCX=ptr, RDX=len → WriteFile(stdout, ptr, len)
     enc.label("__pyb_print_str");
     match target {
@@ -2464,7 +2464,7 @@ const CALLEE_SAVED_ORDER: &[X86Reg] = &[
     X86Reg::RSI, X86Reg::RDI,
 ];
 
-fn get_used_callee_saved(func: &AllocatedFunction) -> Vec<X86Reg> {
+pub fn get_used_callee_saved(func: &AllocatedFunction) -> Vec<X86Reg> {
     let mut saved = vec![X86Reg::RBX]; // Always save RBX
     for &reg in CALLEE_SAVED_ORDER {
         if reg == X86Reg::RBX { continue; }
@@ -2475,7 +2475,7 @@ fn get_used_callee_saved(func: &AllocatedFunction) -> Vec<X86Reg> {
     saved
 }
 
-fn emit_function_epilogue(saved_regs: &[X86Reg], stack_size: usize, enc: &mut Encoder) {
+pub fn emit_function_epilogue(saved_regs: &[X86Reg], stack_size: usize, enc: &mut Encoder) {
     if stack_size > 0 && stack_size <= 127 {
         enc.add_rsp(stack_size as u8);
     }
@@ -2487,7 +2487,7 @@ fn emit_function_epilogue(saved_regs: &[X86Reg], stack_size: usize, enc: &mut En
 }
 
 // ── Compile a user function ───────────────────────────────────
-fn compile_function(func: &AllocatedFunction, enc: &mut Encoder, _target: Target) {
+pub fn compile_function(func: &AllocatedFunction, enc: &mut Encoder, _target: Target) {
     enc.label(&func.name);
 
     let saved_regs = get_used_callee_saved(func);
@@ -2524,7 +2524,7 @@ fn compile_function(func: &AllocatedFunction, enc: &mut Encoder, _target: Target
     }
 }
 
-fn compile_instruction(instr: &IRInstruction, func: &AllocatedFunction, enc: &mut Encoder, saved_regs: &[X86Reg], stack_size: usize) {
+pub fn compile_instruction(instr: &IRInstruction, func: &AllocatedFunction, enc: &mut Encoder, saved_regs: &[X86Reg], stack_size: usize) {
     match instr {
         IRInstruction::LoadConst(val) => {
             match val {
