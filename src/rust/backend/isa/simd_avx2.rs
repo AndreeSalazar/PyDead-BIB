@@ -1,3 +1,7 @@
+use super::encoder::Encoder;
+use crate::backend::reg_alloc::X86Reg;
+
+impl Encoder {
     // ── SSE2 float instructions ─────────────────────────────
     // MOVSD XMM, [RIP+disp32]  — load f64 from data
     fn movsd_xmm_data(&mut self, xmm: u8, data_label: &str) {
@@ -84,4 +88,3 @@
         }
     }
 }
-

@@ -8,7 +8,13 @@
 
 pub mod optimizer;
 pub mod reg_alloc;
-pub mod isa;
+
+pub mod isa_old;
+pub use isa_old as isa;
+//pub mod isa;
 pub mod bg;
 pub mod output;
-pub mod jit;
+
+pub mod jit_old;
+pub use jit_old as jit;
+//pub mod jit;

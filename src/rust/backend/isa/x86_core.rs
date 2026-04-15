@@ -1,3 +1,7 @@
+use super::encoder::Encoder;
+use crate::backend::isa::{Target, CompiledProgram};
+use crate::backend::reg_alloc::{AllocatedProgram, X86Reg};
+
 // ── Main ISA compiler ─────────────────────────────────────────
 pub fn compile(program: &AllocatedProgram, target: Target) -> CompiledProgram {
     let mut enc = Encoder::new();

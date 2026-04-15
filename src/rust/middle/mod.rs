@@ -6,5 +6,6 @@
 // Pipeline: Python AST → IR → UB Detection → Optimization → Backend
 // ============================================================
 
-pub mod ir;
+pub mod ir_old;
+pub use ir_old as ir;
 pub mod ub_detector;

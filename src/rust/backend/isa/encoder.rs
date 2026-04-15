@@ -88,15 +88,15 @@ pub struct ISAStats {
 }
 
 // ── x86-64 Encoder ────────────────────────────────────────────
-struct Encoder {
-    code: Vec<u8>,
-    data: Vec<u8>,
-    data_labels: Vec<(String, u32)>,
-    label_offsets: Vec<(String, u32)>,
-    fixups: Vec<(usize, String)>,
-    iat_fixups: Vec<(u32, usize)>,
-    data_fixups: Vec<(u32, String)>,
-    stats: ISAStats,
+pub(crate) struct Encoder {
+    pub(crate) code: Vec<u8>,
+    pub(crate) data: Vec<u8>,
+    pub(crate) data_labels: Vec<(String, u32)>,
+    pub(crate) label_offsets: Vec<(String, u32)>,
+    pub(crate) fixups: Vec<(usize, String)>,
+    pub(crate) iat_fixups: Vec<(u32, usize)>,
+    pub(crate) data_fixups: Vec<(u32, String)>,
+    pub(crate) stats: ISAStats,
 }
 
 impl Encoder {
@@ -104,12 +104,12 @@ impl Encoder {
         Self {
             code: Vec::new(),
             data: Vec::new(),
-            data_labels: Vec::new(),
-            label_offsets: Vec::new(),
-            fixups: Vec::new(),
-            iat_fixups: Vec::new(),
-            data_fixups: Vec::new(),
-            stats: ISAStats::default(),
+            pub(crate) data_labels: Vec::new(),
+            pub(crate) label_offsets: Vec::new(),
+            pub(crate) fixups: Vec::new(),
+            pub(crate) iat_fixups: Vec::new(),
+            pub(crate) data_fixups: Vec::new(),
+            pub(crate) stats: ISAStats::default(),
         }
     }
 
@@ -275,3 +275,4 @@ impl Encoder {
         self.data.extend_from_slice(&val.to_le_bytes());
     }
 
+}
