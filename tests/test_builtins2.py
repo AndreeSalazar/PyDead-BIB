@@ -1,5 +1,0 @@
-print(abs(-42))
-print(min(5, 3))
-print(max(5, 3))
-print(chr(65))
-print(ord("Z"))
