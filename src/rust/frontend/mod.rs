@@ -5,7 +5,6 @@
 // ============================================================
 
 pub mod ast;
-pub mod c;
 pub mod python;
 pub mod type_checker;
 pub mod types;
