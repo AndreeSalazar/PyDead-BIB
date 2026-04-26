@@ -16,6 +16,7 @@ pub struct Encoder {
     pub iat_fixups: Vec<(u32, usize)>,
     pub data_fixups: Vec<(u32, String)>,
     pub stats: ISAStats,
+    pub try_handlers: Vec<String>,
 }
 
 impl Encoder {
@@ -29,6 +30,7 @@ impl Encoder {
             iat_fixups: Vec::new(),
             data_fixups: Vec::new(),
             stats: ISAStats::default(),
+            try_handlers: Vec::new(),
         }
     }
 

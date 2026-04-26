@@ -7,6 +7,24 @@ use crate::middle::ir::*;
 use crate::backend::reg_alloc::*;
 use std::collections::HashMap;
 
+/// Check if an IR instruction tree involves float values
+fn is_float_ir(instr: &IRInstruction) -> bool {
+    match instr {
+        IRInstruction::LoadConst(IRConstValue::Float(_)) => true,
+        IRInstruction::BinOp { left, right, .. } => is_float_ir(left) || is_float_ir(right),
+        IRInstruction::Compare { left, right, .. } => is_float_ir(left) || is_float_ir(right),
+        IRInstruction::PrintFloat => true,
+        IRInstruction::MathSqrt | IRInstruction::MathSin | IRInstruction::MathCos
+        | IRInstruction::MathLog | IRInstruction::MathAbsFloat => true,
+        IRInstruction::Load(name) => {
+            // Variables with float-like names or assigned from float expressions
+            // For now, we propagate float from the expression tree above
+            false
+        }
+        _ => false,
+    }
+}
+
 pub fn compile_instruction(instr: &IRInstruction, func: &AllocatedFunction, enc: &mut Encoder, saved_regs: &[X86Reg], stack_size: usize) {
     match instr {
         IRInstruction::LoadConst(val) => {
@@ -25,47 +43,109 @@ pub fn compile_instruction(instr: &IRInstruction, func: &AllocatedFunction, enc:
             }
         }
         IRInstruction::BinOp { op, left, right } => {
-            compile_instruction(left, func, enc, saved_regs, stack_size);
-            enc.push(X86Reg::RAX);
-            compile_instruction(right, func, enc, saved_regs, stack_size);
-            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
-            enc.pop(X86Reg::RAX);
-            match op {
-                IROp::Add => enc.add_rr(X86Reg::RAX, X86Reg::RCX),
-                IROp::Sub => enc.sub_rr(X86Reg::RAX, X86Reg::RCX),
-                IROp::Mul => enc.imul_rr(X86Reg::RAX, X86Reg::RCX),
-                IROp::Div | IROp::FloorDiv => enc.idiv_r(X86Reg::RCX),
-                IROp::Mod => {
-                    enc.idiv_r(X86Reg::RCX);
-                    enc.mov_rr(X86Reg::RAX, X86Reg::RDX);
+            if is_float_ir(instr) {
+                // ── Float path: SSE2 double-precision ──
+                // Compile left → XMM0, save to XMM1, compile right → XMM0, swap
+                compile_instruction(left, func, enc, saved_regs, stack_size);
+                // Left result is in XMM0 (LoadConst::Float puts it there)
+                // For non-literal lefts, RAX has bits → move to XMM0
+                enc.movq_xmm0_rax(); // ensure XMM0 has the value (no-op if already there from Float)
+                enc.movsd_xmm_xmm(1, 0); // XMM1 = left
+                compile_instruction(right, func, enc, saved_regs, stack_size);
+                enc.movq_xmm0_rax(); // XMM0 = right
+                // Now XMM1=left, XMM0=right → we want result in XMM0
+                // Swap: XMM1=left op XMM0=right, but SSE ops are dst OP= src
+                // So: MOVSD XMM2, XMM0; MOVSD XMM0, XMM1; OP XMM0, XMM2
+                enc.movsd_xmm_xmm(2, 0); // XMM2 = right
+                enc.movsd_xmm_xmm(0, 1); // XMM0 = left
+                match op {
+                    IROp::Add => enc.addsd(0, 2),
+                    IROp::Sub => enc.subsd(0, 2),
+                    IROp::Mul => enc.mulsd(0, 2),
+                    IROp::Div | IROp::FloorDiv => enc.divsd(0, 2),
+                    _ => {} // Pow, shifts etc. fall through to int path
                 }
-                IROp::Pow => {
-                    // RAX=base, RCX=exponent → call __pyb_pow
-                    enc.call_label("__pyb_pow");
+                // Result in XMM0 → also store bits in RAX for Store/Load compatibility
+                enc.movq_rax_xmm0();
+            } else {
+                // ── Integer path: original behavior ──
+                compile_instruction(left, func, enc, saved_regs, stack_size);
+                enc.push(X86Reg::RAX);
+                compile_instruction(right, func, enc, saved_regs, stack_size);
+                enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+                enc.pop(X86Reg::RAX);
+                match op {
+                    IROp::Add => enc.add_rr(X86Reg::RAX, X86Reg::RCX),
+                    IROp::Sub => enc.sub_rr(X86Reg::RAX, X86Reg::RCX),
+                    IROp::Mul => enc.imul_rr(X86Reg::RAX, X86Reg::RCX),
+                    IROp::Div | IROp::FloorDiv => enc.idiv_r(X86Reg::RCX),
+                    IROp::Mod => {
+                        enc.idiv_r(X86Reg::RCX);
+                        enc.mov_rr(X86Reg::RAX, X86Reg::RDX);
+                    }
+                    IROp::Pow => {
+                        enc.call_label("__pyb_pow");
+                    }
+                    IROp::Shl => { enc.rex_w(); enc.emit(&[0xD3, 0xE0]); }
+                    IROp::Shr => { enc.rex_w(); enc.emit(&[0xD3, 0xF8]); }
+                    IROp::And => { enc.rex_w(); enc.emit(&[0x21, 0xC8]); }
+                    IROp::Or  => { enc.rex_w(); enc.emit(&[0x09, 0xC8]); }
+                    IROp::Xor => { enc.rex_w(); enc.emit(&[0x31, 0xC8]); }
+                    _ => {}
                 }
-                IROp::Shl => { enc.rex_w(); enc.emit(&[0xD3, 0xE0]); }
-                IROp::Shr => { enc.rex_w(); enc.emit(&[0xD3, 0xF8]); }
-                IROp::And => { enc.rex_w(); enc.emit(&[0x21, 0xC8]); }
-                IROp::Or  => { enc.rex_w(); enc.emit(&[0x09, 0xC8]); }
-                IROp::Xor => { enc.rex_w(); enc.emit(&[0x31, 0xC8]); }
-                _ => {}
             }
         }
         IRInstruction::Compare { op, left, right } => {
-            compile_instruction(left, func, enc, saved_regs, stack_size);
-            enc.push(X86Reg::RAX);
-            compile_instruction(right, func, enc, saved_regs, stack_size);
-            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
-            enc.pop(X86Reg::RAX);
-            enc.cmp_rr(X86Reg::RAX, X86Reg::RCX);
-            let cc = match op {
-                IRCmpOp::Eq => 0x94, IRCmpOp::Ne => 0x95,
-                IRCmpOp::Lt => 0x9C, IRCmpOp::Le => 0x9E,
-                IRCmpOp::Gt => 0x9F, IRCmpOp::Ge => 0x9D,
-                _ => 0x94,
-            };
-            enc.emit(&[0x0F, cc, 0xC0]);
-            enc.rex_w(); enc.emit(&[0x0F, 0xB6, 0xC0]);
+            if is_float_ir(instr) {
+                // ── Float compare: UCOMISD (NaN-safe) ──
+                compile_instruction(left, func, enc, saved_regs, stack_size);
+                enc.movq_xmm0_rax();
+                enc.movsd_xmm_xmm(1, 0); // XMM1 = left
+                compile_instruction(right, func, enc, saved_regs, stack_size);
+                enc.movq_xmm0_rax(); // XMM0 = right
+                // UCOMISD XMM1, XMM0 → compare left vs right
+                enc.ucomisd(1, 0);
+                // NaN-safe: UCOMISD sets PF=1 on unordered (NaN)
+                // For Eq/Lt/Le/Gt/Ge: result=false if NaN → SETcc AL + SETNP DL + AND AL,DL
+                // For Ne: result=true if NaN → SETNE AL + SETP DL + OR AL,DL
+                match op {
+                    IRCmpOp::Ne => {
+                        enc.emit(&[0x0F, 0x95, 0xC0]); // SETNE AL
+                        enc.emit(&[0x0F, 0x9A, 0xC2]); // SETP  DL
+                        enc.emit(&[0x08, 0xD0]);        // OR AL, DL
+                    }
+                    _ => {
+                        let cc = match op {
+                            IRCmpOp::Eq => 0x94, // SETE
+                            IRCmpOp::Lt => 0x92, // SETB
+                            IRCmpOp::Le => 0x96, // SETBE
+                            IRCmpOp::Gt => 0x97, // SETA
+                            IRCmpOp::Ge => 0x93, // SETAE
+                            _ => 0x94,
+                        };
+                        enc.emit(&[0x0F, cc, 0xC0]);    // SETcc AL
+                        enc.emit(&[0x0F, 0x9B, 0xC2]);  // SETNP DL
+                        enc.emit(&[0x20, 0xD0]);         // AND AL, DL
+                    }
+                }
+                enc.rex_w(); enc.emit(&[0x0F, 0xB6, 0xC0]); // MOVZX RAX, AL
+            } else {
+                // ── Integer compare: original ──
+                compile_instruction(left, func, enc, saved_regs, stack_size);
+                enc.push(X86Reg::RAX);
+                compile_instruction(right, func, enc, saved_regs, stack_size);
+                enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+                enc.pop(X86Reg::RAX);
+                enc.cmp_rr(X86Reg::RAX, X86Reg::RCX);
+                let cc = match op {
+                    IRCmpOp::Eq => 0x94, IRCmpOp::Ne => 0x95,
+                    IRCmpOp::Lt => 0x9C, IRCmpOp::Le => 0x9E,
+                    IRCmpOp::Gt => 0x9F, IRCmpOp::Ge => 0x9D,
+                    _ => 0x94,
+                };
+                enc.emit(&[0x0F, cc, 0xC0]);
+                enc.rex_w(); enc.emit(&[0x0F, 0xB6, 0xC0]);
+            }
         }
         IRInstruction::Label(name) => enc.label(name),
         IRInstruction::Jump(lbl) => enc.jmp(lbl),
@@ -125,29 +205,32 @@ pub fn compile_instruction(instr: &IRInstruction, func: &AllocatedFunction, enc:
                 // RAX = new obj ptr, save in RBX
                 enc.push(X86Reg::RAX); // save obj ptr on stack
                 // 2) Call __init__(self=new_ptr, args...)
-                // First load remaining args into temps on stack
-                for (i, arg) in args[1..].iter().enumerate() {
+                // Evaluate all init args (args[1..]) and push to stack
+                for arg in args[1..].iter() {
                     compile_instruction(arg, func, enc, saved_regs, stack_size);
-                    enc.push(X86Reg::RAX); // push each arg
+                    enc.push(X86Reg::RAX);
                 }
-                // Now pop args into ABI regs in reverse
-                let abi = [X86Reg::RCX, X86Reg::RDX, X86Reg::R8, X86Reg::R9];
                 let extra_args = args.len() - 1; // excluding alloc_size
-                // Pop extra args that don't fit in ABI regs (leave on stack for callee)
-                for i in (0..extra_args).rev() {
-                    if i + 1 < abi.len() {
-                        enc.pop(abi[i + 1]); // +1 because slot 0 is self
-                    } else {
-                        // Extra args beyond 4 ABI regs stay on stack
-                        enc.pop(X86Reg::RAX); // discard into RAX (simplified)
-                    }
+                // Pop args into ABI regs: slot 0 = self (from saved obj ptr below)
+                // slot 1..3 = RDX, R8, R9
+                let abi = [X86Reg::RCX, X86Reg::RDX, X86Reg::R8, X86Reg::R9];
+                // Pop into ABI regs in reverse (skip slot 0 = self, handled separately)
+                let reg_args = extra_args.min(3); // max 3 user args in RDX/R8/R9
+                for i in (0..reg_args).rev() {
+                    enc.pop(abi[i + 1]); // +1 because abi[0]=RCX=self
                 }
-                // self = saved obj ptr (on stack top)
+                // Any remaining args beyond 3 stay on the stack for callee
+                // self = saved obj ptr (on stack top after the user args)
                 enc.pop(X86Reg::RCX); // self = new obj ptr
                 enc.push(X86Reg::RCX); // re-save for return
                 enc.sub_rsp(32);
                 enc.call_label(init_func);
                 enc.add_rsp(32);
+                // Clean up any extra stack args that were left for callee
+                if extra_args > 3 {
+                    let cleanup = ((extra_args - 3) * 8) as u8;
+                    enc.add_rsp(cleanup);
+                }
                 // 3) Return obj ptr
                 enc.pop(X86Reg::RAX); // restore obj ptr
             } else if args.is_empty() && callee.starts_with("__pyb_") {
@@ -177,6 +260,14 @@ pub fn compile_instruction(instr: &IRInstruction, func: &AllocatedFunction, enc:
                 enc.sub_rsp(32);
                 enc.call_label(callee);
                 enc.add_rsp(32);
+                // Post-call: jump to try handler if error state set
+                if let Some(handler) = enc.try_handlers.last().cloned() {
+                    enc.push(X86Reg::RAX); // preserve return value
+                    enc.lea_rax_data("__pyb_error_state");
+                    enc.emit(&[0x48, 0x83, 0x38, 0x00]); // CMP QWORD [RAX], 0
+                    enc.pop(X86Reg::RAX);  // POP doesn't change flags
+                    enc.jcc(0x85, &handler); // JNE handler
+                }
             }
         }
         IRInstruction::VarDecl { .. } => {}
@@ -265,13 +356,18 @@ pub fn compile_instruction(instr: &IRInstruction, func: &AllocatedFunction, enc:
             // If we get here, it's a no-op
         }
         // Exception handling — uses __pyb_error_state global
-        IRInstruction::TryBegin(_handler_label) => {
-            // Clear error state at try entry
+        IRInstruction::TryBegin(handler_label) => {
+            // Clear error state and push handler for post-call checking
+            enc.ensure_data_label("__pyb_error_state", 0i64);
             enc.lea_rax_data("__pyb_error_state");
             enc.emit(&[0x48, 0xC7, 0x00, 0x00, 0x00, 0x00, 0x00]); // MOV QWORD [RAX], 0
+            enc.try_handlers.push(handler_label.clone());
         }
         IRInstruction::TryEnd => {
-            // Nothing — error state already cleared if no error
+            // Clear error state and pop handler
+            enc.lea_rax_data("__pyb_error_state");
+            enc.emit(&[0x48, 0xC7, 0x00, 0x00, 0x00, 0x00, 0x00]); // MOV QWORD [RAX], 0
+            enc.try_handlers.pop();
         }
         IRInstruction::ClearError => {
             enc.lea_rax_data("__pyb_error_state");
@@ -343,16 +439,25 @@ pub fn compile_instruction(instr: &IRInstruction, func: &AllocatedFunction, enc:
 
         // v3.0 — Property descriptor
         IRInstruction::PropertyGet { obj, name } => {
-            // Calls the getter method: ClassName__name(self)
+            // Call getter: __prop_get_NAME(self) → RAX = value
             if let Some((_, reg)) = func.reg_map.iter().find(|(n, _)| n == obj) {
                 enc.mov_rr(X86Reg::RCX, *reg);
             }
+            let getter = format!("__prop_get_{}", name);
+            enc.sub_rsp(32);
+            enc.call_label(&getter);
+            enc.add_rsp(32);
         }
         IRInstruction::PropertySet { obj, name } => {
-            // Calls the setter method
+            // Call setter: __prop_set_NAME(self, value) — RAX has value
+            enc.mov_rr(X86Reg::RDX, X86Reg::RAX); // value → RDX
             if let Some((_, reg)) = func.reg_map.iter().find(|(n, _)| n == obj) {
                 enc.mov_rr(X86Reg::RCX, *reg);
             }
+            let setter = format!("__prop_set_{}", name);
+            enc.sub_rsp(32);
+            enc.call_label(&setter);
+            enc.add_rsp(32);
         }
 
         // v3.0 — LRU Cache
