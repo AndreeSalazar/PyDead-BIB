@@ -74,45 +74,6 @@ void tape_record_ce(Tape* tape, Tensor* logits, Tensor* softmax_out,
 
 // ── Backward pass ────────────────────────────────────────
 
-// backward for: C = A + B
-// dA = dC, dB = dC (gradient flows through unchanged)
-static void backward_add(TapeNode* node) {
-    Tensor* grad_out = node->grad;
-    if (!grad_out) return;
-
-    // Accumulate gradient to input 0
-    Tensor* a = node->inputs[0];
-    (void)a;
-    // For add, grad_input = grad_output (identity)
-    // We find the tape node whose output == inputs[i] and accumulate
-    // This is handled by the main backward loop via grad propagation
-}
-
-// backward for: C = A * B (element-wise)
-// dA = dC * B, dB = dC * A
-static void backward_mul(TapeNode* node) {
-    // Saved: inputs[0] = A, inputs[1] = B at forward time
-    (void)node;
-}
-
-// backward for: C = A @ B (matmul)
-// dA = dC @ B^T, dB = A^T @ dC
-static void backward_matmul(TapeNode* node) {
-    (void)node;
-}
-
-// backward for: Y = relu(X)
-// dX = dY * (X > 0)
-static void backward_relu(TapeNode* node) {
-    (void)node;
-}
-
-// backward for: cross-entropy loss with softmax
-// dLogits = softmax_output - one_hot(labels)
-static void backward_cross_entropy(TapeNode* node) {
-    (void)node;
-}
-
 void tape_backward(Tape* tape) {
     if (tape->count == 0) return;
 

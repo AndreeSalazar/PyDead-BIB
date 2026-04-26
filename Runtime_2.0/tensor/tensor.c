@@ -246,7 +246,11 @@ float tensor_sum(const Tensor* t) {
     for (; i + 8 <= t->size; i += 8) {
         vsum = _mm256_add_ps(vsum, _mm256_load_ps(&t->data[i]));
     }
+#ifdef _MSC_VER
+    __declspec(align(32)) float tmp[8];
+#else
     float tmp[8] __attribute__((aligned(32)));
+#endif
     _mm256_store_ps(tmp, vsum);
     s = tmp[0] + tmp[1] + tmp[2] + tmp[3] + tmp[4] + tmp[5] + tmp[6] + tmp[7];
 #endif
