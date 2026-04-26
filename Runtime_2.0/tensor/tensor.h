@@ -60,6 +60,11 @@ Tensor* tensor_softmax(const Tensor* t);
 // ── Shape ops ─────────────────────────────────────────────
 Tensor* tensor_reshape(const Tensor* t, const int64_t* new_shape, int32_t new_ndim);
 
+// ── In-place ops (no allocation, modifies dst) ────────────
+void    tensor_add_inplace(Tensor* dst, const Tensor* src);
+void    tensor_sub_inplace(Tensor* dst, const Tensor* src);
+void    tensor_scale_inplace(Tensor* t, float scalar);
+
 // ── Debug ─────────────────────────────────────────────────
 void    tensor_print(const Tensor* t);
 void    tensor_print_shape(const Tensor* t);

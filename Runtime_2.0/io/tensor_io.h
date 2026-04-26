@@ -23,4 +23,9 @@ int     tensor_load_all(const char* path, Tensor*** tensors,
 int     tensor_save_raw(const Tensor* t, const char* path);
 Tensor* tensor_load_raw(const char* path, const int64_t* shape, int32_t ndim);
 
+// ── CSV data loading ────────────────────────────────────
+// Loads a CSV file of floats into a Tensor (rows x cols).
+// First pass counts rows/cols, second pass reads data.
+Tensor* tensor_load_csv(const char* path);
+
 #endif

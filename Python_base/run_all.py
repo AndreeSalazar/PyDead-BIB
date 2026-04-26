@@ -99,6 +99,36 @@ LEVELS = [
             ]),
         ],
     },
+    {
+        "name": "06_ia",
+        "title": "IA — Nivel 11-13: Tensor Math, NN Forward, Training Loop",
+        "modules": [
+            ("06_ia.test_11_tensor_math", [
+                "test_dot_product",
+                "test_vector_add",
+                "test_vector_scale",
+                "test_matmul_2x2",
+                "test_relu_manual",
+                "test_mean",
+            ]),
+            ("06_ia.test_12_nn_forward", [
+                "test_linear_forward_1x3",
+                "test_relu_activation",
+                "test_sigmoid_manual",
+                "test_mlp_2layer",
+                "test_softmax_manual_2class",
+                "test_mse_loss",
+            ]),
+            ("06_ia.test_13_training_loop", [
+                "test_sgd_step",
+                "test_sgd_multiple_steps",
+                "test_gradient_descent_quadratic",
+                "test_two_param_optimization",
+                "test_loss_decreases",
+                "test_weight_update_momentum",
+            ]),
+        ],
+    },
 ]
 
 

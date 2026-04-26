@@ -132,3 +132,48 @@ Tensor* tensor_load_raw(const char* path, const int64_t* shape, int32_t ndim) {
     fclose(f);
     return t;
 }
+
+// ── CSV data loading ────────────────────────────────────
+
+Tensor* tensor_load_csv(const char* path) {
+    FILE* f = fopen(path, "r");
+    if (!f) return NULL;
+
+    // Pass 1: count rows and cols
+    int64_t rows = 0, cols = 0;
+    char line[65536];
+    while (fgets(line, sizeof(line), f)) {
+        if (line[0] == '\n' || line[0] == '\r' || line[0] == '#') continue;
+        rows++;
+        if (cols == 0) {
+            // Count commas + 1 = number of columns
+            int64_t c = 1;
+            for (char* p = line; *p; p++) {
+                if (*p == ',') c++;
+            }
+            cols = c;
+        }
+    }
+
+    if (rows == 0 || cols == 0) { fclose(f); return NULL; }
+
+    // Create tensor
+    int64_t shape[2] = { rows, cols };
+    Tensor* t = tensor_create(shape, 2);
+    if (!t) { fclose(f); return NULL; }
+
+    // Pass 2: read data
+    rewind(f);
+    int64_t idx = 0;
+    while (fgets(line, sizeof(line), f)) {
+        if (line[0] == '\n' || line[0] == '\r' || line[0] == '#') continue;
+        char* ptr = line;
+        for (int64_t j = 0; j < cols; j++) {
+            t->data[idx++] = strtof(ptr, &ptr);
+            if (*ptr == ',') ptr++;
+        }
+    }
+
+    fclose(f);
+    return t;
+}

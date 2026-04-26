@@ -144,6 +144,84 @@ pub enum IRInstruction {
     VkBufferFree { ptr: String },                       // vkFreeMemory + vkDestroyBuffer
     VkDestroy,                                          // vkDestroyDevice + vkDestroyInstance
 
+    // ── Runtime 2.0 — IA Native Runtime ────────────────────────
+    // Tensor lifecycle
+    RtTensorCreate { rows: Box<IRInstruction>, cols: Box<IRInstruction> },  // tensor_create(rows,cols) → Tensor*
+    RtTensorCreateFrom { rows: Box<IRInstruction>, cols: Box<IRInstruction>, data: String }, // tensor from .data label
+    RtTensorFree,                                              // tensor_free(RAX=Tensor*)
+    RtTensorZeros { rows: Box<IRInstruction>, cols: Box<IRInstruction> },
+    RtTensorOnes { rows: Box<IRInstruction>, cols: Box<IRInstruction> },
+    RtTensorPrint,                                             // tensor_print(RAX=Tensor*)
+
+    // Tensor element-wise ops (result = new Tensor*)
+    RtTensorAdd,        // tensor_add(RCX=a, RDX=b) → RAX=Tensor*
+    RtTensorSub,        // tensor_sub
+    RtTensorMul,        // tensor_mul
+    RtTensorDiv,        // tensor_div
+    RtTensorScale,      // tensor_scale(RCX=t, XMM1=scalar) → RAX=Tensor*
+    RtTensorMatmul,     // tensor_matmul(RCX=a, RDX=b) → RAX=Tensor*
+    RtTensorTranspose,  // tensor_transpose(RCX=t) → RAX=Tensor*
+
+    // Tensor activations
+    RtTensorRelu,       // tensor_relu(RCX=t) → RAX=Tensor*
+    RtTensorSigmoid,    // tensor_sigmoid
+    RtTensorTanh,       // tensor_tanh_act
+    RtTensorSoftmax,    // tensor_softmax
+
+    // Tensor reductions (result in RAX as f64 bits)
+    RtTensorSum,        // tensor_sum(RCX=t) → XMM0=f64
+    RtTensorMean,       // tensor_mean
+    RtTensorMax,        // tensor_max
+    RtTensorMin,        // tensor_min
+
+    // Tensor accessors
+    RtTensorGet2d { row: Box<IRInstruction>, col: Box<IRInstruction> }, // tensor_get_2d(t,row,col)→f64
+    RtTensorSet2d { row: Box<IRInstruction>, col: Box<IRInstruction>, val: Box<IRInstruction> },
+
+    // NN ops
+    RtLinearCreate { in_f: Box<IRInstruction>, out_f: Box<IRInstruction> }, // linear_create(in,out)→Linear*
+    RtLinearForward,    // linear_forward(RCX=Linear*, RDX=input) → RAX=Tensor*
+    RtMlpCreate { layers: Vec<IRInstruction>, n_layers: Box<IRInstruction> },
+    RtMlpForward,       // mlp_forward(RCX=MLP*, RDX=input) → RAX=Tensor*
+    RtNNFillRandom,     // nn_fill_random(RCX=Tensor*, RDX=seed)
+    RtCrossEntropyLoss, // nn_cross_entropy_loss(RCX=pred, RDX=target) → XMM0=f64
+
+    // Autograd
+    RtTapeCreate,       // tape_create() → RAX=Tape*
+    RtTapeFree,         // tape_free(RCX=Tape*)
+    RtTapeBackward,     // tape_backward(RCX=Tape*)
+    RtTapeZeroGrad,     // tape_zero_grad(RCX=Tape*)
+    RtAgMatmul,         // ag_matmul(RCX=Tape*, RDX=a, R8=b) → RAX=Tensor*
+    RtAgAdd,            // ag_add(RCX=Tape*, RDX=a, R8=b) → RAX=Tensor*
+    RtAgRelu,           // ag_relu(RCX=Tape*, RDX=input) → RAX=Tensor*
+    RtAgSoftmaxCe,      // ag_softmax_ce(RCX=Tape*, RDX=logits, R8=labels, R9=batch) → RAX=Tensor*
+
+    // Optimizers
+    RtSgdCreate { lr: Box<IRInstruction>, momentum: Box<IRInstruction>, wd: Box<IRInstruction> },
+    RtAdamCreate { lr: Box<IRInstruction>, beta1: Box<IRInstruction>, beta2: Box<IRInstruction> },
+    RtOptimStep,        // optim_sgd_step or optim_adam_step(RCX=Optim*, RDX=params, R8=grads, R9=n)
+    RtOptimZeroGrad,    // optim_zero_grad(RCX=grads, RDX=n)
+
+    // Tensor I/O
+    RtTensorSave,       // tensor_save(RCX=path, RDX=Tensor*) → RAX=0 ok
+    RtTensorLoad,       // tensor_load(RCX=path) → RAX=Tensor*
+    RtModelSave,        // tensor_save_multi(RCX=path, RDX=tensors[], R8=n)
+    RtModelLoad,        // tensor_load_multi(RCX=path, RDX=tensors[], R8=n)
+
+    // Memory / Arena
+    RtArenaCreate { capacity: Box<IRInstruction> }, // arena_create(cap) → Arena*
+    RtArenaFree,        // arena_free(RCX=Arena*)
+    RtArenaReset,       // arena_reset(RCX=Arena*)
+    RtArenaAllocTensor { rows: Box<IRInstruction>, cols: Box<IRInstruction> }, // arena_alloc_tensor
+
+    // In-place ops (no new allocation)
+    RtTensorAddInplace,  // tensor_add_inplace(RCX=dst, RDX=src)
+    RtTensorSubInplace,  // tensor_sub_inplace
+    RtTensorScaleInplace, // tensor_scale_inplace(RCX=t, XMM1=scalar)
+
+    // Data loading
+    RtLoadCsv,          // load_csv(RCX=path, RDX=&rows, R8=&cols) → RAX=float*
+
     // No-op
     Nop,
 }

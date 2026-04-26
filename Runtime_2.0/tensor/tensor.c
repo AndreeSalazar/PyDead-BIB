@@ -401,3 +401,47 @@ void tensor_print(const Tensor* t) {
         printf("]\n");
     }
 }
+
+// ── In-place ops (no allocation, modifies dst) ────────────
+
+void tensor_add_inplace(Tensor* dst, const Tensor* src) {
+    int64_t i = 0;
+#ifdef __AVX2__
+    for (; i + 8 <= dst->size; i += 8) {
+        __m256 vd = _mm256_load_ps(&dst->data[i]);
+        __m256 vs = _mm256_load_ps(&src->data[i]);
+        _mm256_store_ps(&dst->data[i], _mm256_add_ps(vd, vs));
+    }
+#endif
+    for (; i < dst->size; i++) {
+        dst->data[i] += src->data[i];
+    }
+}
+
+void tensor_sub_inplace(Tensor* dst, const Tensor* src) {
+    int64_t i = 0;
+#ifdef __AVX2__
+    for (; i + 8 <= dst->size; i += 8) {
+        __m256 vd = _mm256_load_ps(&dst->data[i]);
+        __m256 vs = _mm256_load_ps(&src->data[i]);
+        _mm256_store_ps(&dst->data[i], _mm256_sub_ps(vd, vs));
+    }
+#endif
+    for (; i < dst->size; i++) {
+        dst->data[i] -= src->data[i];
+    }
+}
+
+void tensor_scale_inplace(Tensor* t, float scalar) {
+    int64_t i = 0;
+#ifdef __AVX2__
+    __m256 vs = _mm256_set1_ps(scalar);
+    for (; i + 8 <= t->size; i += 8) {
+        __m256 vd = _mm256_load_ps(&t->data[i]);
+        _mm256_store_ps(&t->data[i], _mm256_mul_ps(vd, vs));
+    }
+#endif
+    for (; i < t->size; i++) {
+        t->data[i] *= scalar;
+    }
+}

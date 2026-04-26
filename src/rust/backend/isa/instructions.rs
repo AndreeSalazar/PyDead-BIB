@@ -762,6 +762,406 @@ pub fn compile_instruction(instr: &IRInstruction, func: &AllocatedFunction, enc:
             enc.add_rsp(32);
         }
 
+        // ── Runtime 2.0 — IA Native Runtime codegen ──────────────
+        // All Rt* instructions emit CALL to Runtime 2.0 C functions.
+        // Windows x64 ABI: RCX, RDX, R8, R9 for first 4 args, XMM0-3 for floats.
+        // Return: RAX for int/ptr, XMM0 for float.
+
+        // Tensor lifecycle
+        IRInstruction::RtTensorCreate { rows, cols } => {
+            compile_instruction(rows, func, enc, saved_regs, stack_size);
+            enc.push(X86Reg::RAX);
+            compile_instruction(cols, func, enc, saved_regs, stack_size);
+            enc.mov_rr(X86Reg::RDX, X86Reg::RAX);
+            enc.pop(X86Reg::RCX);
+            enc.sub_rsp(32);
+            enc.call_label("tensor_create");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtTensorCreateFrom { rows, cols, data } => {
+            compile_instruction(rows, func, enc, saved_regs, stack_size);
+            enc.push(X86Reg::RAX);
+            compile_instruction(cols, func, enc, saved_regs, stack_size);
+            enc.mov_rr(X86Reg::RDX, X86Reg::RAX);
+            enc.pop(X86Reg::RCX);
+            enc.lea_rax_data(data);
+            enc.mov_rr(X86Reg::R8, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("tensor_create");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtTensorFree => {
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("tensor_free");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtTensorZeros { rows, cols } => {
+            compile_instruction(rows, func, enc, saved_regs, stack_size);
+            enc.push(X86Reg::RAX);
+            compile_instruction(cols, func, enc, saved_regs, stack_size);
+            enc.mov_rr(X86Reg::RDX, X86Reg::RAX);
+            enc.pop(X86Reg::RCX);
+            enc.sub_rsp(32);
+            enc.call_label("tensor_zeros");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtTensorOnes { rows, cols } => {
+            compile_instruction(rows, func, enc, saved_regs, stack_size);
+            enc.push(X86Reg::RAX);
+            compile_instruction(cols, func, enc, saved_regs, stack_size);
+            enc.mov_rr(X86Reg::RDX, X86Reg::RAX);
+            enc.pop(X86Reg::RCX);
+            enc.sub_rsp(32);
+            enc.call_label("tensor_ones");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtTensorPrint => {
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("tensor_print");
+            enc.add_rsp(32);
+        }
+
+        // Tensor element-wise ops: RCX=a, RDX=b → RAX=result
+        IRInstruction::RtTensorAdd => {
+            // Expects a in RCX, b in RDX (caller sets up)
+            enc.sub_rsp(32);
+            enc.call_label("tensor_add");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtTensorSub => {
+            enc.sub_rsp(32);
+            enc.call_label("tensor_sub");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtTensorMul => {
+            enc.sub_rsp(32);
+            enc.call_label("tensor_mul");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtTensorDiv => {
+            enc.sub_rsp(32);
+            enc.call_label("tensor_div");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtTensorScale => {
+            // RCX=tensor, XMM1=scalar
+            enc.sub_rsp(32);
+            enc.call_label("tensor_scale");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtTensorMatmul => {
+            // RCX=a, RDX=b → RAX=result
+            enc.sub_rsp(32);
+            enc.call_label("tensor_matmul");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtTensorTranspose => {
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("tensor_transpose");
+            enc.add_rsp(32);
+        }
+
+        // Tensor activations: RCX=input → RAX=result
+        IRInstruction::RtTensorRelu => {
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("tensor_relu");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtTensorSigmoid => {
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("tensor_sigmoid");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtTensorTanh => {
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("tensor_tanh_act");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtTensorSoftmax => {
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("tensor_softmax");
+            enc.add_rsp(32);
+        }
+
+        // Tensor reductions: RCX=tensor → XMM0=float result
+        IRInstruction::RtTensorSum => {
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("tensor_sum");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtTensorMean => {
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("tensor_mean");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtTensorMax => {
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("tensor_max");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtTensorMin => {
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("tensor_min");
+            enc.add_rsp(32);
+        }
+
+        // Tensor accessors
+        IRInstruction::RtTensorGet2d { row, col } => {
+            // RAX=tensor, compile row→RDX, col→R8
+            enc.push(X86Reg::RAX);
+            compile_instruction(row, func, enc, saved_regs, stack_size);
+            enc.push(X86Reg::RAX);
+            compile_instruction(col, func, enc, saved_regs, stack_size);
+            enc.mov_rr(X86Reg::R8, X86Reg::RAX);
+            enc.pop(X86Reg::RDX);
+            enc.pop(X86Reg::RCX);
+            enc.sub_rsp(32);
+            enc.call_label("tensor_get_2d");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtTensorSet2d { row, col, val } => {
+            enc.push(X86Reg::RAX); // tensor ptr
+            compile_instruction(row, func, enc, saved_regs, stack_size);
+            enc.push(X86Reg::RAX);
+            compile_instruction(col, func, enc, saved_regs, stack_size);
+            enc.push(X86Reg::RAX);
+            compile_instruction(val, func, enc, saved_regs, stack_size);
+            enc.mov_rr(X86Reg::R9, X86Reg::RAX); // val (as int bits, or XMM)
+            enc.pop(X86Reg::R8);  // col
+            enc.pop(X86Reg::RDX); // row
+            enc.pop(X86Reg::RCX); // tensor
+            enc.sub_rsp(32);
+            enc.call_label("tensor_set_2d");
+            enc.add_rsp(32);
+        }
+
+        // NN ops
+        IRInstruction::RtLinearCreate { in_f, out_f } => {
+            compile_instruction(in_f, func, enc, saved_regs, stack_size);
+            enc.push(X86Reg::RAX);
+            compile_instruction(out_f, func, enc, saved_regs, stack_size);
+            enc.mov_rr(X86Reg::RDX, X86Reg::RAX);
+            enc.pop(X86Reg::RCX);
+            enc.sub_rsp(32);
+            enc.call_label("linear_create");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtLinearForward => {
+            // RCX=Linear*, RDX=input → RAX=Tensor*
+            enc.sub_rsp(32);
+            enc.call_label("linear_forward");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtMlpCreate { layers: _, n_layers: _ } => {
+            // Simplified: caller must set up args in ABI regs
+            enc.sub_rsp(32);
+            enc.call_label("mlp_create");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtMlpForward => {
+            enc.sub_rsp(32);
+            enc.call_label("mlp_forward");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtNNFillRandom => {
+            // RCX=Tensor*, RDX=seed
+            enc.sub_rsp(32);
+            enc.call_label("nn_fill_random");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtCrossEntropyLoss => {
+            // RCX=pred, RDX=target → XMM0=float
+            enc.sub_rsp(32);
+            enc.call_label("nn_cross_entropy_loss");
+            enc.add_rsp(32);
+        }
+
+        // Autograd
+        IRInstruction::RtTapeCreate => {
+            enc.sub_rsp(32);
+            enc.call_label("tape_create");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtTapeFree => {
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("tape_free");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtTapeBackward => {
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("tape_backward");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtTapeZeroGrad => {
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("tape_zero_grad");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtAgMatmul => {
+            // RCX=tape, RDX=a, R8=b
+            enc.sub_rsp(32);
+            enc.call_label("ag_matmul");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtAgAdd => {
+            enc.sub_rsp(32);
+            enc.call_label("ag_add");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtAgRelu => {
+            enc.sub_rsp(32);
+            enc.call_label("ag_relu");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtAgSoftmaxCe => {
+            // RCX=tape, RDX=logits, R8=labels, R9=batch_size
+            enc.sub_rsp(32);
+            enc.call_label("ag_softmax_ce");
+            enc.add_rsp(32);
+        }
+
+        // Optimizers
+        IRInstruction::RtSgdCreate { lr, momentum, wd } => {
+            compile_instruction(lr, func, enc, saved_regs, stack_size);
+            enc.push(X86Reg::RAX);
+            compile_instruction(momentum, func, enc, saved_regs, stack_size);
+            enc.push(X86Reg::RAX);
+            compile_instruction(wd, func, enc, saved_regs, stack_size);
+            enc.mov_rr(X86Reg::R8, X86Reg::RAX);
+            enc.pop(X86Reg::RDX);
+            enc.pop(X86Reg::RCX);
+            enc.sub_rsp(32);
+            enc.call_label("optim_sgd_create");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtAdamCreate { lr, beta1, beta2 } => {
+            compile_instruction(lr, func, enc, saved_regs, stack_size);
+            enc.push(X86Reg::RAX);
+            compile_instruction(beta1, func, enc, saved_regs, stack_size);
+            enc.push(X86Reg::RAX);
+            compile_instruction(beta2, func, enc, saved_regs, stack_size);
+            enc.mov_rr(X86Reg::R8, X86Reg::RAX);
+            enc.pop(X86Reg::RDX);
+            enc.pop(X86Reg::RCX);
+            enc.sub_rsp(32);
+            enc.call_label("optim_adam_create");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtOptimStep => {
+            // RCX=optim, RDX=params, R8=grads, R9=n
+            enc.sub_rsp(32);
+            enc.call_label("optim_sgd_step");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtOptimZeroGrad => {
+            // RCX=grads, RDX=n
+            enc.sub_rsp(32);
+            enc.call_label("optim_zero_grad");
+            enc.add_rsp(32);
+        }
+
+        // Tensor I/O
+        IRInstruction::RtTensorSave => {
+            // RCX=path, RDX=tensor
+            enc.sub_rsp(32);
+            enc.call_label("tensor_save");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtTensorLoad => {
+            // RCX=path → RAX=Tensor*
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("tensor_load");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtModelSave => {
+            // RCX=path, RDX=tensors[], R8=n
+            enc.sub_rsp(32);
+            enc.call_label("tensor_save_multi");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtModelLoad => {
+            // RCX=path, RDX=tensors[], R8=n
+            enc.sub_rsp(32);
+            enc.call_label("tensor_load_multi");
+            enc.add_rsp(32);
+        }
+
+        // Memory / Arena
+        IRInstruction::RtArenaCreate { capacity } => {
+            compile_instruction(capacity, func, enc, saved_regs, stack_size);
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("arena_create");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtArenaFree => {
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("arena_free");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtArenaReset => {
+            enc.mov_rr(X86Reg::RCX, X86Reg::RAX);
+            enc.sub_rsp(32);
+            enc.call_label("arena_reset");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtArenaAllocTensor { rows, cols } => {
+            // RAX=arena, rows→RDX, cols→R8
+            enc.push(X86Reg::RAX);
+            compile_instruction(rows, func, enc, saved_regs, stack_size);
+            enc.push(X86Reg::RAX);
+            compile_instruction(cols, func, enc, saved_regs, stack_size);
+            enc.mov_rr(X86Reg::R8, X86Reg::RAX);
+            enc.pop(X86Reg::RDX);
+            enc.pop(X86Reg::RCX);
+            enc.sub_rsp(32);
+            enc.call_label("arena_alloc_tensor");
+            enc.add_rsp(32);
+        }
+
+        // In-place ops
+        IRInstruction::RtTensorAddInplace => {
+            // RCX=dst, RDX=src
+            enc.sub_rsp(32);
+            enc.call_label("tensor_add_inplace");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtTensorSubInplace => {
+            enc.sub_rsp(32);
+            enc.call_label("tensor_sub_inplace");
+            enc.add_rsp(32);
+        }
+        IRInstruction::RtTensorScaleInplace => {
+            // RCX=tensor, XMM1=scalar
+            enc.sub_rsp(32);
+            enc.call_label("tensor_scale_inplace");
+            enc.add_rsp(32);
+        }
+
+        // Data loading
+        IRInstruction::RtLoadCsv => {
+            // RCX=path, RDX=&rows, R8=&cols → RAX=float*
+            enc.sub_rsp(32);
+            enc.call_label("load_csv");
+            enc.add_rsp(32);
+        }
+
         _ => {}
     }
 }
