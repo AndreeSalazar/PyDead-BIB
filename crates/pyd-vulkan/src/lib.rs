@@ -170,6 +170,36 @@ impl VulkanEngine {
 
     /// Ejecuta una multiplicación de matrices (MatMul) usando un Compute Shader en la GPU
     pub fn execute_matmul(&mut self, lhs_name: &str, rhs_name: &str, dest_name: &str) -> Result<()> {
+        // 1. CREACIÓN IMPLÍCITA: Si el tensor de destino no existe, lo creamos automáticamente
+        if !self.tensors.contains_key(dest_name) {
+            let lhs_shape = self.tensors.get(lhs_name)
+                .ok_or_else(|| anyhow!("Tensor '{}' not found", lhs_name))?
+                .meta.shape.clone();
+            let rhs_shape = self.tensors.get(rhs_name)
+                .ok_or_else(|| anyhow!("Tensor '{}' not found", rhs_name))?
+                .meta.shape.clone();
+            
+            // Calculamos la forma del destino: [filas de lhs, columnas de rhs]
+            let mut dest_shape = lhs_shape.clone();
+            if let Some(last) = dest_shape.last_mut() {
+                if let Some(rhs_cols) = rhs_shape.last() {
+                    *last = *rhs_cols;
+                }
+            }
+            
+            let num_elements: usize = dest_shape.iter().product();
+            let zeros = vec![0.0f32; num_elements];
+            
+            let dest_meta = TensorMeta {
+                name: dest_name.to_string(),
+                shape: dest_shape,
+                dtype: pyd_core::TensorDType::Float32,
+            };
+            
+            println!("   ⚡ [Vulkan] Creando implícitamente Tensor de destino '{}' con forma {:?}", dest_name, dest_meta.shape);
+            self.create_tensor_buffer(&dest_meta, &zeros)?;
+        }
+
         let lhs_buf = self.tensors.get(lhs_name).ok_or_else(|| anyhow!("Tensor '{}' not found", lhs_name))?;
         let rhs_buf = self.tensors.get(rhs_name).ok_or_else(|| anyhow!("Tensor '{}' not found", rhs_name))?;
         let dest_buf = self.tensors.get(dest_name).ok_or_else(|| anyhow!("Tensor '{}' not found", dest_name))?;
