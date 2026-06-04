@@ -46,7 +46,7 @@ c = a @ b
             }
             Instruction::MatMul { dest_name, lhs_name, rhs_name } => {
                 println!("\n🔥 Ejecutando operación: {} = {} @ {}", dest_name, lhs_name, rhs_name);
-                vk_engine.execute_matmul(&dest_name, &lhs_name, &rhs_name)?;
+                vk_engine.execute_matmul(&lhs_name, &rhs_name, &dest_name)?;
             }
         }
     }

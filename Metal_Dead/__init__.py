@@ -1,7 +1,0 @@
-print("============================================================")
-print("   Metal-Dead para PyDead-BIB v3.0")
-print("   IA Personal Ultra-Eficiente — Compilado NATIVO")
-print("   GPU CUDA + CPU SIMD AVX2 — Sin CPython")
-print("   Eddi Andree Salazar Matos — Lima, Peru")
-print("============================================================")
-print("init ok")

@@ -33,7 +33,7 @@ target/
 .DS_Store
 Thumbs.db
 
-# Output (not src/rust/output/)
+# Output
 /output/
 bin/
 dist/
@@ -42,3 +42,9 @@ dist/
 *.test
 test_output/
 
+# Vulkan Shaders (compiled SPIR-V)
+*.spv
+
+# Trash / Deprecated files
+__pycache__/
+*.pyc
