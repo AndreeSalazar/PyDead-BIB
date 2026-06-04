@@ -1,7 +1,7 @@
 [package]
 name = "pyd-cli"
-version.workspace = true
-edition.workspace = true
+version = "6.0.0"
+edition = "2021"
 
 [[bin]]
 name = "pyd"
@@ -11,6 +11,7 @@ path = "src/main.rs"
 pyd-core = { path = "../pyd-core" }
 pyd-parser = { path = "../pyd-parser" }
 pyd-vulkan = { path = "../pyd-vulkan" }
-log.workspace = true
-env_logger.workspace = true
-anyhow.workspace = true
+
+# Dependencias para modularidad y manejo profesional de CLI/Errores
+clap = { version = "4.4", features = ["derive"] }
+thiserror = "1.0"
