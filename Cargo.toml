@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "crates/pyd-core",
-    "crates/pyd-gc",
     "crates/pyd-parser",
     "crates/pyd-vulkan",
     "crates/pyd-cli",

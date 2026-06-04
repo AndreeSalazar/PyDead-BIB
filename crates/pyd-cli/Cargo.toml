@@ -9,7 +9,6 @@ path = "src/main.rs"
 
 [dependencies]
 pyd-core = { path = "../pyd-core" }
-pyd-gc = { path = "../pyd-gc" }
 pyd-parser = { path = "../pyd-parser" }
 pyd-vulkan = { path = "../pyd-vulkan" }
 log.workspace = true

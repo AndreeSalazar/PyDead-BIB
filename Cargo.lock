@@ -461,7 +461,6 @@ dependencies = [
  "env_logger",
  "log",
  "pyd-core",
- "pyd-gc",
  "pyd-parser",
  "pyd-vulkan",
 ]
@@ -471,14 +470,6 @@ name = "pyd-core"
 version = "6.0.0"
 dependencies = [
  "thiserror",
-]
-
-[[package]]
-name = "pyd-gc"
-version = "6.0.0"
-dependencies = [
- "log",
- "pyd-core",
 ]
 
 [[package]]

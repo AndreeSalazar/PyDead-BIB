@@ -1,0 +1,20 @@
+#version 450
+// Shader de Compute para multiplicación de matrices 2x2
+layout(local_size_x = 2, local_size_y = 2) in;
+
+layout(set = 0, binding = 0) buffer BufferA { float a[]; };
+layout(set = 0, binding = 1) buffer BufferB { float b[]; };
+layout(set = 0, binding = 2) buffer BufferC { float c[]; };
+
+void main() {
+    uint x = gl_GlobalInvocationID.x;
+    uint y = gl_GlobalInvocationID.y;
+    uint idx = y * 2 + x;
+    
+    // MatMul 2x2: C[y, x] = sum(A[y, k] * B[k, x])
+    float sum = 0.0;
+    for (uint k = 0; k < 2; k++) {
+        sum += a[y * 2 + k] * b[k * 2 + x];
+    }
+    c[idx] = sum;
+}
