@@ -1,225 +1,174 @@
 # PyDead-BIB 💀🦈
-
-```
   ██████╗ ██╗   ██╗██████╗ ███████╗ █████╗ ██████╗       ██████╗ ██╗██████╗ 
   ██╔══██╗╚██╗ ██╔╝██╔══██╗██╔════╝██╔══██╗██╔══██╗      ██╔══██╗██║██╔══██╗
   ██████╔╝ ╚████╔╝ ██║  ██║█████╗  ███████║██║  ██║█████╗██████╔╝██║██████╔╝
   ██╔═══╝   ╚██╔╝  ██║  ██║██╔══╝  ██╔══██║██║  ██║╚════╝██╔══██╗██║██╔══██╗
   ██║        ██║   ██████╔╝███████╗██║  ██║██████╔╝      ██████╔╝██║██████╔╝
   ╚═╝        ╚═╝   ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═════╝       ╚═════╝ ╚═╝╚═════╝ 
-```
 
-> **Python + Vulkan: Compilación y Aceleración GPU para IA**
+**Python + Vulkan: Compilation and GPU Acceleration for AI**
 
-[![Rust](https://img.shields.io/badge/Rust-1.75+-orange.svg)](https://www.rust-lang.org/)
-[![License](https://img.shields.io/badge/License-Techne%20v1.0-purple.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-6.0.0-green.svg)](https://github.com/AndreeSalazar/PyDead-BIB)
+![Rust](https://img.shields.io/badge/Rust-1.75+-orange.svg)
+![License](https://img.shields.io/badge/License-Techne%20v1.0-purple.svg)
+![Version](https://img.shields.io/badge/Version-6.0.0-green.svg)
 
-```text
 ╔═══════════════════════════════════════════════════════════════════════════╗
-║  v6.0 — PyDead-BIB: Python Frontend + Vulkan Compute Backend            ║
-║  rustpython-parser (100% Python) + ash (Vulkan) + MatMul GPU            ║
+║  v6.0 — PyDead-BIB: Python Frontend + Vulkan Compute Backend              ║
+║  rustpython-parser (100% Python compatible) + ash (Vulkan) + GPU MatMul   ║
 ╚═══════════════════════════════════════════════════════════════════════════╝
-```
 
----
+## 🚀 What is PyDead-BIB v6.0?
+PyDead-BIB is a high-performance compilation and execution engine for Python code, specifically designed for hardware-accelerated Artificial Intelligence workloads. 
 
-## 🚀 ¿Qué es PyDead-BIB v6.0?
+In version 6.0, the project has evolved from a custom compiler into a modular **Rust Workspace** architecture, leveraging industry-standard tools to guarantee compatibility, safety, and raw performance:
+* **Frontend (`pyd-parser`)**: Utilizes `rustpython-parser` to guarantee 100% compatibility with Python syntax without reinventing the wheel.
+* **Core (`pyd-core`)**: Defines the Intermediate Representation (IR) and data structures for N-dimensional tensors.
+* **Backend (`pyd-vulkan`)**: Utilizes `ash` (Vulkan bindings for Rust) to execute linear algebra operations (like Matrix Multiplication) directly on the GPU via Compute Shaders.
+* **CLI (`pyd-cli`)**: The command-line interface that orchestrates the entire pipeline: `Python → AST → IR → GPU → Result`.
 
-**PyDead-BIB** es un proyecto de compilación y ejecución de código Python enfocado en **aceleración por hardware (IA)**. 
-
-En su versión 6.0, el proyecto ha evolucionado de un compilador custom a una arquitectura modular basada en **Workspaces de Rust**, aprovechando herramientas de la industria para garantizar compatibilidad y rendimiento:
-
-1.  **Frontend (`pyd-parser`)**: Utiliza `rustpython-parser` para garantizar **compatibilidad 100% con la sintaxis de Python** sin reinventar la rueda.
-2.  **Core (`pyd-core`)**: Define la Representación Intermedia (IR) y las estructuras de datos para tensores.
-3.  **Backend (`pyd-vulkan`)**: Utiliza `ash` (Vulkan bindings para Rust) para ejecutar operaciones de álgebra lineal (como **MatMul**) directamente en la **GPU**.
-4.  **CLI (`pyd-cli`)**: Interfaz de línea de comandos que orquesta el flujo completo: `Python → IR → GPU → Resultado`.
-
----
-
-## 🏗️ Arquitectura del Proyecto
-
-El proyecto está organizado como un **Cargo Workspace** para máxima modularidad:
+## 🏗️ Project Architecture
+The project is organized as a Cargo Workspace for maximum modularity and clean separation of concerns:
 
 ```text
 PyDead-BIB/
-├── Cargo.toml              # Workspace raíz
+├── Cargo.toml              # Root workspace configuration
 ├── crates/
-│   ├── pyd-cli/            # Binario principal (CLI)
-│   ├── pyd-core/           # IR, tipos y estructuras base
-│   ├── pyd-parser/         # Frontend: rustpython-parser → IR
-│   ├── pyd-vulkan/         # Backend: ash (Vulkan) para Compute Shaders
-│   └── pyd-gc/             # (Futuro) Garbage Collector
+│   ├── pyd-cli/            # Main binary (CLI orchestrator)
+│   ├── pyd-core/           # IR, types, and base structures (TensorMeta, Instructions)
+│   ├── pyd-parser/         # Frontend: rustpython-parser → IR lowering
+│   ├── pyd-vulkan/         # Backend: ash (Vulkan) for Compute Shaders & Memory
+│   └── pyd-gc/             # (Future) Custom Garbage Collector
 ├── shaders/
-│   └── matmul.comp         # Compute Shader SPIR-V para multiplicación de matrices
-└── hello.py                # Script de prueba
-```
+│   └── matmul.comp         # SPIR-V Compute Shader for matrix multiplication
+└── hello.py                # Example test script
 
-### Flujo de Ejecución (MatMul en GPU)
+Execution Flow (GPU MatMul)
 
-```text
-Código Python (.py)
+Python Code (.py)
         ↓
-┌───────────────────────────────────────────┐
-│  pyd-parser (rustpython-parser)           │
-│  Parsea AST de Python → Genera IR         │
-└───────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│  pyd-parser (rustpython-parser)                         │
+│  Parses Python AST → Lowers to Custom IR                │
+└─────────────────────────────────────────────────────────┘
         ↓
-┌───────────────────────────────────────────┐
-│  pyd-core                                 │
-│  Instrucciones: CreateTensor, MatMul      │
-└───────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│  pyd-core                                               │
+│  Generates Instructions: CreateTensor, MatMul, Read     │
+└─────────────────────────────────────────────────────────┘
         ↓
-┌───────────────────────────────────────────┐
-│  pyd-vulkan (ash)                         │
-│  1. Reserva buffers en VRAM               │
-│  2. Carga datos (Host → Device)           │
-│  3. Ejecuta Compute Shader (matmul.comp)  │
-│  4. Lee resultado (Device → Host)         │
-└───────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│  pyd-vulkan (ash)                                       │
+│  1. Allocates VRAM buffers (vk::Buffer)                 │
+│  2. Uploads data (Host → Device via vkMapMemory)        │
+│  3. Executes Compute Shader (vkCmdDispatch)             │
+│  4. Reads result back (Device → Host)                   │
+└─────────────────────────────────────────────────────────┘
         ↓
-  Resultado en CPU
-```
+  Final Result on CPU
 
----
+🛠️ Requirements
+Rust 1.75+ (rustup.rs)
+Vulkan SDK installed with the VULKAN_SDK environment variable configured.
+A Vulkan 1.2+ compatible GPU (Modern NVIDIA, AMD, or Intel).
+glslc (included in the Vulkan SDK) to compile shaders (optional, as the .spv binary is already included).
+📦 Installation & Build
 
-## 🛠️ Requisitos
-
-- **Rust 1.75+** ([rustup.rs](https://rustup.rs))
-- **Vulkan SDK** instalado y variable de entorno `VULKAN_SDK` configurada.
-- **GPU compatible con Vulkan 1.2+** (NVIDIA, AMD, Intel modernos).
-- **glslc** (del Vulkan SDK) para compilar shaders (opcional, el binario `.spv` ya está incluido).
-
----
-
-## 📦 Instalación y Build
-
-```bash
-# Clonar el repositorio
+# Clone the repository
 git clone https://github.com/AndreeSalazar/PyDead-BIB.git
 cd PyDead-BIB
 
-# Compilar el workspace completo
+# Build the entire workspace in release mode
 cargo build --release
 
-# El ejecutable estará en:
+# The executable will be located at:
 # Windows: target/release/pyd-cli.exe
 # Linux:   target/release/pyd-cli
-```
 
-### Compilar el Shader (Si modificas `shaders/matmul.comp`)
 
-```bash
-# Usando glslc (incluido en Vulkan SDK)
+Compiling the Shader (If you modify shaders/matmul.comp)
+# Using glslc (included in Vulkan SDK)
 glslc shaders/matmul.comp -o shaders/matmul.comp.spv
-```
 
 ---
+🚀 Usage
+Run the complete test pipeline:
 
-## 🚀 Uso
-
-Ejecuta el pipeline completo de prueba:
-
-```bash
 cargo run --bin pyd-cli
-```
 
-### Salida esperada
+Expected Output:
 
-```text
-💀🦈 PyDead-BIB v6.0 - Enfoque Total en IA + Vulkan
-✅ Motor Vulkan inicializado correctamente.
+💀🦈 PyDead-BIB v6.0 - Total Focus on AI + Vulkan
+✅ Vulkan Engine initialized successfully.
 
-📜 Código Python a compilar:
+📜 Python code to compile:
 a = Tensor([2, 2])
 b = Tensor([2, 2])
 c = a @ b
 
-✅ Código parseado y convertido a IR. Total instrucciones: 3
+✅ Code parsed and lowered to IR. Total instructions: 3
 
-📦 Creando Tensor en GPU: 'a' con forma [2, 2]
-📦 Creando Tensor en GPU: 'b' con forma [2, 2]
-📦 Creando Tensor en GPU: 'c' con forma [2, 2]
+📦 Creating Tensor on GPU: 'a' with shape [2, 2]
+   📦 [Vulkan] Allocating memory for tensor 'a'
 
-🔥 Ejecutando operación: c = a @ b
-📥 Leyendo resultado del Tensor 'c' desde la GPU...
-✅ Resultado de MatMul (C = A @ B):
+📦 Creating Tensor on GPU: 'b' with shape [2, 2]
+   📦 [Vulkan] Allocating memory for tensor 'b'
+
+🔥 Executing operation: c = a @ b
+   🔥 [Vulkan] Dispatching MatMul Compute Shader...
+
+📥 Reading result from Tensor 'c' on GPU...
+✅ MatMul Result (C = A @ B):
    [ 19.0, 22.0 ]
    [ 43.0, 50.0 ]
 
-🎉 ¡MATEMÁTICAS CORRECTAS! La GPU calculó la multiplicación de matrices perfectamente.
-```
+🎉 MATHEMATICS VERIFIED! The GPU calculated the matrix multiplication perfectly.
+🎯 Vulkan pipeline executed. Tensors created and computed in GPU memory.
 
 ---
 
-## 🧪 Estructura de Crates
 
-### `pyd-core`
-Define las estructuras fundamentales:
-- `TensorMeta`: Metadatos de tensores (nombre, forma).
-- `Instruction`: Enum con las operaciones IR (`CreateTensor`, `MatMul`).
+🧪 Crate Structure Details
+pyd-core: Defines fundamental structures like TensorMeta (tensor metadata: name, shape) and Instruction (enum for IR operations like CreateTensor, MatMul).
+pyd-parser: Converts Python code into IR instructions. Example: let instructions = parse_and_lower("a = Tensor([2, 2])")?;
+pyd-vulkan: The GPU computation engine using ash. Handles VulkanEngine::new() (instance/device setup), create_tensor_buffer() (VRAM allocation), and execute_matmul() (shader pipeline preparation).
 
-### `pyd-parser`
-Convierte código Python en instrucciones IR:
-```rust
-use pyd_parser::parse_and_lower;
+🗺️ Roadmap
+v6.1 (Next)
+Implement real Compute Dispatch in pyd-vulkan (Descriptor Sets, Command Buffers, and actual vkCmdDispatch).
+Support for N-Dimensional Tensors (dynamic shapes beyond 2x2).
+Real parsing of Python list literals (extracting actual float values from the AST).
 
-let instructions = parse_and_lower("a = Tensor([2, 2])")?;
-```
+v6.2
+Add element-wise operations: Add, Multiply, ReLU.
+Basic computation graph for future Autograd (backpropagation) support.
 
-### `pyd-vulkan`
-Motor de computación GPU usando `ash`:
-- `VulkanEngine::new()`: Inicializa instancia, dispositivo y colas de computación.
-- `create_tensor_buffer()`: Reserva memoria en VRAM y sube datos iniciales.
-- `execute_matmul()`: Carga el shader SPIR-V y prepara el pipeline de computación.
+v7.0
+Integration with simple AI models (Feed-Forward Neural Network primitives).
+Memory optimization using Vulkan Memory Allocator (VMA).
+Performance benchmarking against CPU-only baselines.
 
----
+📄 License
+This software is protected under the TECHNE LICENSE v1.0.
+"The art belongs to the artisan. Its use bears fruit that must be shared."
 
-## 🗺️ Roadmap
+Usage
+Cost
+Personal / Individual
+FREE
+Students / Education
+FREE
+Open Source (OSI)
+FREE
+NGO / Nonprofit
+FREE
+Startup (< $1M/year revenue)
+FREE
+Enterprise (> $1M/year revenue)
+10% royalty on attributable revenue
 
-### v6.0 (Actual)
-- [x] Workspace modular con Cargo.
-- [x] Integración de `rustpython-parser` para frontend.
-- [x] Motor Vulkan básico con `ash` (ash 0.38).
-- [x] Pipeline de prueba para MatMul 2x2.
-
-### v6.1 (Próximo)
-- [ ] Implementar *Compute Dispatch* real en `pyd-vulkan` (Descriptor Sets + Command Buffers).
-- [ ] Soporte para tensores N-dimensionales.
-- [ ] Parseo real de literales de lista desde Python.
-
-### v7.0
-- [ ] Integración con modelos de IA simples (Redes Neuronales Feed-Forward).
-- [ ] Optimización de memoria con *Memory Pools* en Vulkan.
-- [ ] Soporte para múltiples operaciones (Add, ReLU, Softmax).
-
----
-
-## 📄 Licencia
-
-Este software está protegido bajo la **TECHNE LICENSE v1.0**.
-
-> *"El arte pertenece al artesano. Su uso da frutos que deben compartirse."*
-
-| Uso | Costo |
-| --- | --- |
-| Personal / individual | **GRATIS** |
-| Estudiantes / educación | **GRATIS** |
-| Open source (OSI) | **GRATIS** |
-| ONG / nonprofit | **GRATIS** |
-| Startup < $1M/year | **GRATIS** |
-| Empresa > $1M revenue | **10% royalty** sobre revenue atribuible |
-
----
-
-## 👨‍💻 Autor
-
-**Eddi Andree Salazar Matos**  
-Lima, Perú 🇵🇪  
-
-GitHub: [github.com/AndreeSalazar](https://github.com/AndreeSalazar)  
-
----
-
-*"Python + Vulkan — Aceleración real para IA"*  
-*Licensed under Techne v1.0 — Lima, Perú 🇵🇪 — 2026*
+👨‍💻 Author
+Eddi Andree Salazar Matos
+Lima, Peru 🇵🇪
+GitHub: github.com/AndreeSalazar
+"Python + Vulkan — Real Acceleration for AI"
+Licensed under Techne v1.0 — Lima, Perú 🇵🇪 — 2026
