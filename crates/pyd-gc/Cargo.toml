@@ -1,0 +1,8 @@
+[package]
+name = "pyd-gc"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+pyd-core = { path = "../pyd-core" }
+log.workspace = true

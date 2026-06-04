@@ -1,26 +1,28 @@
-[package]
-name = "PyDead-bib"
-version = "5.0.0"
+[workspace]
+members = [
+    "crates/pyd-core",
+    "crates/pyd-gc",
+    "crates/pyd-parser",
+    "crates/pyd-vulkan",
+    "crates/pyd-cli",
+]
+resolver = "2"
+
+[workspace.package]
+version = "6.0.0"
 edition = "2021"
+authors = ["PyDead-BIB Team"]
 
-[dependencies]
-nom = "7.1"
-object = { version = "0.36", features = ["write_core"] }  # Para generar PE/ELF
-goblin = "0.7"   # Para parsing de binarios (opcional)
-pelite = "0.10"  # Para generar PE válidos
+[workspace.dependencies]
+# Frontend: Parser y AST de RustPython (compatibilidad 100% Python)
+rustpython-parser = "0.4.0"
+rustpython-ast = "0.4.0"
 
+# Backend: Vulkan de bajo nivel
+ash = "0.38.0"
 
-# Vulkan - Para exprimir GPU con fuerza
-ash = "0.38"                    # Vulkan bindings (bajo nivel, máximo control)
-gpu-allocator = "0.27"          # Allocator de memoria GPU
-
-[lib]
-name = "PyDead_bib"
-path = "src/rust/lib.rs"
-
-[[bin]]
-name = "pyd"
-path = "src/rust/main.rs"
-
-# PyDead-BIB es 100% Rust - No requiere dependencias de C++
-
+# Utilidades
+log = "0.4"
+env_logger = "0.11"
+thiserror = "1.0"
+anyhow = "1.0"

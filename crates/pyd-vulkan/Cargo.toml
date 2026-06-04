@@ -1,0 +1,10 @@
+[package]
+name = "pyd-vulkan"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+pyd-core = { path = "../pyd-core" }
+ash.workspace = true
+log.workspace = true
+anyhow.workspace = true

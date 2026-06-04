@@ -1,0 +1,11 @@
+[package]
+name = "pyd-parser"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+pyd-core = { path = "../pyd-core" }
+rustpython-parser.workspace = true
+rustpython-ast.workspace = true
+log.workspace = true
+anyhow.workspace = true
